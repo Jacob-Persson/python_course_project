@@ -4,43 +4,29 @@ Project description: Solve the neutron diffusion equation and plot the results.
 
 
 
+\### Project Structure
+
+
+
+```text
+
 neutronic\_field\_theory/
 
-├── \_\_init\_\_.py
+├── docs/                  # Sphinx documentation source and build files
 
-├── config.yaml            # External parameters (D, rho, grid size, etc.)
+│   ├── source/            # .rst files and conf.py
 
-├── main.py                # Entry point: loads config, runs solver, and plots
+│   └── build/             # Generated HTML files
 
-├── models/
+├── models/                # Physics engines (Linear, Spectral, etc.)
 
-│   ├── \_\_init\_\_.py
+├── solvers/               # Numerical integrators (solve\_ivp)
 
-│   ├── base\_model.py      # Abstract base class defining the interface
+├── tests/                 # Pytest suite for physics verification
 
-│   └── diffusion.py       # Linear NDE implementation (Standard Laplacian)
+├── utils/                 # Plotting and diagnostics
 
-├── solvers/
+├── config.yaml            # Simulation parameters
 
-│   ├── \_\_init\_\_.py
-
-│   └── integrator.py      # Numerical methods (solve\_ivp, Euler-Maruyama)
-
-├── tests/
-
-│   ├── \_\_init\_\_.py
-
-│   ├── test\_models.py     # Tests for ICs and derivative
-
-│   └── test\_physics.py    # Tests for conservation laws
-
-└── utils/
-
-&#x20;   ├── \_\_init\_\_.py
-
-&#x20;   └── plotting.py        # Dedicated functions for Matplotlib/Visualization
-
-
-
-
+└── main.py                # Project entry point
 
