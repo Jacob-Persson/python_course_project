@@ -1,8 +1,8 @@
 physics:
   D: 0.2
   rho: 0.05
-  L: 20.0
-  nx: 150
+  L: [20.0, 20.0, 20.0]  # Length in x, y, z
+  nodes: [50, 50, 50]    # Number of points in x, y, z
 
 initial_condition:
   type: "gaussian"  # Options: gaussian, uniform, point_source

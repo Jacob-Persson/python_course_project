@@ -7,84 +7,60 @@ Created on Tue Mar 24 13:26:37 2026
 
 import numpy as np
 import pytest
-from models.diffusion import LinearNDE
+from models.diffusion import SpectralNDE3D
 from solvers.integrator import run_pde_solver
 
-def test_exponential_growth():
-    """
-    Test: If D=0 and N is uniform, N(t) should follow N0 * exp(rho * t).
-    This validates that the reaction term and the time-stepper work together.
-    """
-    # 1. Setup a "No-Diffusion" config
-    rho = 0.1
-    t_end = 5.0
-    config = {
-        'physics': {'D': 0.0, 'rho': rho, 'L': 10.0, 'nx': 50},
-        'initial_condition': {'type': 'uniform', 'amplitude': 1.0},
-        'simulation': {'t_end': t_end, 'n_frames': 2, 'method': 'RK45'}
-    }
-    
-    # 2. Run simulation
-    model = LinearNDE(config)
-    sol = run_pde_solver(model, config)
-    
-    # 3. Calculate Analytical vs Numerical
-    N_final_numerical = sol.y[:, -1]
-    N_final_analytical = 1.0 * np.exp(rho * t_end)
-    
-    # 4. Assertion (allowing for small numerical integration error)
-    assert np.allclose(N_final_numerical, N_final_analytical, rtol=1e-4)
-
-def test_diffusion_widening():
-    """
-    Test: With rho=0 and a point source, the variance of the distribution 
-    should increase over time (qualitative check for D > 0).
-    """
-    config = {
-        'physics': {'D': 1.0, 'rho': 0.0, 'L': 50.0, 'nx': 200},
-        'initial_condition': {'type': 'point_source', 'amplitude': 1.0},
+@pytest.fixture
+def config_3d():
+    """Standard 3D config for testing."""
+    return {
+        'physics': {
+            'D': 0.5, 
+            'rho': 0.1, 
+            'L': [20.0, 20.0, 20.0], 
+            'nodes': [31, 31, 31]
+        },
+        'initial_condition': {'type': 'point_source', 'amplitude': 10.0},
         'simulation': {'t_end': 2.0, 'n_frames': 2, 'method': 'RK45'}
     }
-    model = LinearNDE(config)
-    sol = run_pde_solver(model, config)
+
+def test_3d_exponential_growth(config_3d):
+    """Test: Total population grows by exp(rho * t) regardless of D."""
+    config_3d['physics']['D'] = 0.2  # Include diffusion to ensure it doesn't break mass
+    model = SpectralNDE3D(config_3d)
+    sol = run_pde_solver(model, config_3d)
     
-    initial_peak = np.max(sol.y[:, 0])
-    final_peak = np.max(sol.y[:, -1])
+    pop_start = np.sum(sol.y[:, 0]) * model.dv
+    pop_end = np.sum(sol.y[:, -1]) * model.dv
     
-    # In pure diffusion, the peak must drop as the pulse spreads
-    assert final_peak < initial_peak
+    expected_pop = pop_start * np.exp(config_3d['physics']['rho'] * 2.0)
     
-def test_diffusion_analytical_gaussian():
+    # Check that growth matches analytical expectation
+    assert pytest.approx(pop_end, rel=1e-3) == expected_pop
+
+def test_3d_diffusion_greens_function(config_3d):
     """
-    Test: Compare numerical diffusion of a point source 
-    against the analytical Green's function.
+    Test: Compare 3D point source diffusion against 3D Green's function.
+    N(r,t) = A / (4*pi*D*t)^1.5 * exp(-r^2 / 4Dt)
     """
-    # 1. Setup Parameters
-    D, L, t_end = 0.5, 50.0, 4.0
-    amp = 10.0
-    config = {
-        'physics': {'D': D, 'rho': 0.0, 'L': L, 'nx': 500}, # High nx for accuracy
-        'initial_condition': {'type': 'point_source', 'amplitude': amp},
-        'simulation': {'t_end': t_end, 'n_frames': 2, 'method': 'RK45'}
-    }
+    config_3d['physics']['rho'] = 0.0 # Pure diffusion
+    t_end = config_3d['simulation']['t_end']
+    D = config_3d['physics']['D']
+    amp = config_3d['initial_condition']['amplitude']
     
-    model = LinearNDE(config)
-    sol = run_pde_solver(model, config)
+    model = SpectralNDE3D(config_3d)
+    sol = run_pde_solver(model, config_3d)
     
-    # 2. Extract Numerical Result at t_end
-    x = model.x
-    x0 = L / 2
-    N_numerical = sol.y[:, -1]
+    # Analytical solution at center point
+    # r=0 at the center where the source was placed
+    # Analytical peak N(0,t) = A / (4 * pi * D * t)^1.5
+    variance = 4 * np.pi * D * t_end
+    analytical_peak = amp / (variance**1.5)
     
-    # 3. Calculate Analytical Solution
-    # N(x,t) = A / sqrt(4 * pi * D * t) * exp(-(x-x0)^2 / (4 * D * t))
-    variance = 4 * D * t_end
-    N_analytical = (amp / np.sqrt(np.pi * variance)) * np.exp(-(x - x0)**2 / variance)
-    
-    # 4. Compare (excluding boundaries where Dirichlet BCs cause divergence)
-    inner = slice(50, -50) 
-    # Use np.allclose or check the maximum error
-    max_error = np.abs(N_numerical[inner] - N_analytical[inner]).max()
-    
-    # Tolerance is slightly higher due to discretization of the Dirac Delta
-    assert max_error < 0.05 
+    # Numerical peak
+    N_final = sol.y[:, -1].reshape(model.nodes)
+    mid = model.nodes // 2
+    numerical_peak = N_final[mid, mid, mid]
+
+    # Discretization of delta function leads to some error; check within 1%
+    assert pytest.approx(numerical_peak, rel=0.01) == analytical_peak
