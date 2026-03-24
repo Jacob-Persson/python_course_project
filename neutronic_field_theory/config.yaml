@@ -1,0 +1,16 @@
+physics:
+  D: 0.2
+  rho: 0.05
+  L: 20.0
+  nx: 150
+
+initial_condition:
+  type: "gaussian"  # Options: gaussian, uniform, point_source
+  amplitude: 1.0
+  width: 1.0
+  center_offset: 0.0  # 0.0 means center of the domain
+
+simulation:
+  t_end: 30.0
+  n_frames: 6
+  method: "RK45"
