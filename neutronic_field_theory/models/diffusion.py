@@ -8,9 +8,28 @@ Created on Tue Mar 24 11:21:12 2026
 import numpy as np
 from numpy.fft import fftn, ifftn, fftfreq
 from .base_model import BaseModel
+from typing import Dict, Any
 
 class SpectralNDE3D(BaseModel):
-    def __init__(self, config):
+    r"""
+    3D Neutron Diffusion Equation solver using Spectral (FFT) methods.
+
+    This class implements the NDE :math:`\partial_t N = D\nabla^2 N + \rho N`
+    in Fourier space, providing high-precision numerical stability.
+
+    Attributes:
+        D (float): Diffusion coefficient in cm^2/s.
+        rho (float): Reactivity constant in 1/s.
+        k_sq (np.ndarray): Pre-computed squared wave numbers.
+    """
+    
+    def __init__(self, config: Dict[str, Any]):
+        """
+        Initializes the spectral model with configuration parameters.
+
+        Args:
+            config: Dictionary containing 'physics' and 'initial_condition' keys.
+        """
         p = config['physics']
         self.D, self.rho = p['D'], p['rho']
         # Ensure L and nodes are floats/ints for math
@@ -56,7 +75,17 @@ class SpectralNDE3D(BaseModel):
         
         return np.zeros(self.nodes).flatten()
 
-    def compute_rhs(self, t, N_flat):
+    def compute_rhs(self, t: float, N_flat: np.ndarray) -> np.ndarray:
+        """
+        Calculates the time derivative dN/dt using a spectral Laplacian.
+
+        Args:
+            t: Current simulation time (s).
+            N_flat: Flattened 3D array of neutron densities.
+
+        Returns:
+            np.ndarray: Flattened array of dN/dt values.
+        """
         # Reshape to 3D for FFT
         N = N_flat.reshape(self.nodes)
         
