@@ -7,7 +7,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'neutronic_field_theory'
+project = 'neutron_diffusion'
 copyright = '2026, Vattenfall Nuclear Fuel AB'
 author = 'Jacob Persson'
 
@@ -23,7 +23,9 @@ extensions = [
     'sphinx.ext.napoleon',    # Supports Google/NumPy styles
     'sphinx.ext.viewcode',    # Links to source code in HTML
     'sphinx.ext.mathjax',     # Renders LaTeX formulas
+    'sphinx_rtd_theme',       # html theme
 ]
+
 html_theme = 'sphinx_rtd_theme' # The "Read the Docs" look
 
 templates_path = ['_templates']
@@ -34,5 +36,5 @@ exclude_patterns = []
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = 'alabaster'
+html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']

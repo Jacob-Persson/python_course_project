@@ -4,12 +4,6 @@ Project description: Solve the neutron diffusion equation and plot the results.
 
 
 
-\### Project Structure
-
-
-
-```text
-
 neutronic\_field\_theory/
 
 ├── docs/                  # Sphinx documentation source and build files

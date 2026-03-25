@@ -1,4 +1,4 @@
-Welcome to neutronic_field_theory's documentation!
+Welcome to neutron_diffusion's documentation!
 ==================================================
 
 .. toctree::
@@ -6,6 +6,8 @@ Welcome to neutronic_field_theory's documentation!
    :caption: Contents:
 
    modules
+   theory
+   usage
 
 Indices and tables
 ==================
