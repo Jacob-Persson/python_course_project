@@ -17,6 +17,7 @@ simulation:
 
 output:
   save_plots: true          # Boolean flag to toggle saving
+  save_data: true
   save_dir: "results"       # Folder name for saved figures
   format: "png"             # Options: png, pdf, svg, jpg
   dpi: 300                  # High resolution for research-grade plots

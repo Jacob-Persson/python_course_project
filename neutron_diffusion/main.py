@@ -16,6 +16,7 @@ from utils.plotting import (
     plot_time_space_evolution, plot_radial_evolution,
     plot_population_history
 )
+from utils.diagnostics import save_simulation_state
 
 def main():
     plt.close('all')
@@ -53,6 +54,9 @@ def main():
             dpi = out_cfg.get('dpi', 300)
             plt.savefig(save_dir / f"{name}.{ext}", dpi=dpi, bbox_inches='tight') #
 
+    if config['output'].get('save_data', False):
+        save_simulation_state(model, solution, config)
+    
     plt.show()
 
 if __name__ == "__main__":

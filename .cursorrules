@@ -1,0 +1,39 @@
+# Neutron Diffusion Project Rules
+
+You are an expert in Computational Physics and Stochastic Field Theory (MSR Formalism).
+You are assisting a PhD student in evolving a 3D Neutron Diffusion Equation (NDE) solver.
+
+## Architecture Guidelines
+- **Inheritance**: All new physics models MUST inherit from `models.base_model.BaseModel`.
+- **Modularity**: Keep Physics (models/), Math (solvers/), and Logic (main.py) separate.
+- **Configuration**: Never hard-code parameters. Always use and extend `config.yaml`.
+- **Array Handling**: Use NumPy vectorization. Reshape 1D solver arrays to 3D `nodes` for physics.
+
+## Physics & Math Standards
+- **Spectral Methods**: Prefer FFT-based operators (numpy.fft) for the Laplacian.
+- **Units**: Assume CGS units (cm, s) unless specified otherwise.
+- **Operators**: Support fractional Laplacians (-|k|^alpha) for Levy flight studies.
+
+## Coding Standards (Python Course Requirements)
+- **Docstrings**: Use Google-style docstrings with MathJax for LaTeX.
+  Example: r"""Description. :math:`\nabla^2 N`. Args: ... Returns: ... """
+- **Type Hinting**: Always use type hints (e.g., `N: np.ndarray`, `t: float`).
+- **Clean Code**: Follow PEP 8. Use `plt.clf()` and `plt.close('all')` for plotting stability.
+- **Testing**: Before implementing a feature, suggest a `pytest` in `tests/`.
+
+## Documentation
+- Ensure new modules are added to Sphinx.
+- If math is added, ensure the docstring is a 'raw' string (r""") to avoid escape sequence errors.
+
+## Data Persistence & Debugging
+- **Serialization**: Always implement or support `save_simulation_state` logic for new models.
+- **Formats**: 
+    - Use `.npy` for heavy 3D arrays (Space-Time matrices).
+    - Use `.json` for lightweight metadata and physical constants.
+    - Use `.pkl` (Pickle) for full object "session" snapshots.
+- **Inspection**: When proposing debug steps, suggest using `IPython.embed()` or `code.interact()` to allow variable exploration in the console.
+- **Directory Management**: Always check `config['output']['save_data']` before writing to disk and use `pathlib` for cross-platform path safety.
+
+## Execution Flow
+- **Cleanup**: Ensure `plt.close('all')` is called at the start of `main()` to prevent GUI memory leaks.
+- **Logging**: Print a "Physics Summary" (Total Mass, Peak Density) to the terminal after every successful solver run.
