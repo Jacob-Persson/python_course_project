@@ -14,3 +14,9 @@ simulation:
   t_end: 30.0
   n_frames: 6
   method: "RK45"
+
+output:
+  save_plots: true          # Boolean flag to toggle saving
+  save_dir: "results"       # Folder name for saved figures
+  format: "png"             # Options: png, pdf, svg, jpg
+  dpi: 300                  # High resolution for research-grade plots

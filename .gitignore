@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .DS_Store
 neutron_diffusion/docs/build/
+neutron_diffusion/results/
