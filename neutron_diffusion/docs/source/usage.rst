@@ -33,7 +33,7 @@ The simulation is controlled via the ``config.yaml`` file. This allows you to mo
 Running a Simulation
 --------------------
 
-To execute the solver and generate the dashboard, run the main entry point from the project root:
+To execute the solver and generate the plots, run the main entry point from the project root:
 
 .. code-block:: bash
 
@@ -43,7 +43,7 @@ The script will:
 1. Load the parameters from ``config.yaml``.
 2. Initialize the **Spectral (FFT)** 3D model.
 3. Solve the NDE using an adaptive Runge-Kutta method (RK45).
-4. Display a dashboard containing a 2D spatial slice and the total population history.
+4. Display plots.
 
 Extending the Model
 -------------------
