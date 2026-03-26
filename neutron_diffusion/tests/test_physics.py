@@ -72,8 +72,78 @@ def test_3d_diffusion_greens_function(config_3d):
     
     # Numerical peak
     N_final = sol.y[:, -1].reshape(model.nodes)
-    mid = model.nodes // 2
-    numerical_peak = N_final[mid, mid, mid]
+    # On the periodic grid, the delta is placed into the grid cell whose
+    # coordinate is closest to the physical source center at ``L/2``.
+    center = model.L / 2
+    nodes = model.nodes.astype(int)
+    expected_mid = np.clip(
+        np.round(center / model.dx_vec).astype(int),
+        0,
+        nodes - 1,
+    )
+    numerical_peak = N_final[expected_mid[0], expected_mid[1], expected_mid[2]]
 
     # Discretization of delta function leads to some error; check within 1%
     assert pytest.approx(numerical_peak, rel=0.01) == analytical_peak
+
+
+def test_3d_pure_diffusion_mass_conservation(config_3d):
+    r"""
+    For pure diffusion (rho=0) on a periodic FFT grid, the total mass
+    should be conserved:
+
+    .. math::
+        M(t) = \int N(\mathbf{x},t)\, dV \approx \sum_i N_i(t)\, dv.
+    """
+    config_3d = dict(config_3d)
+    config_3d["physics"] = dict(config_3d["physics"])
+    config_3d["physics"]["rho"] = 0.0
+
+    model = SpectralNDE3D(config_3d)
+    sol = run_pde_solver(model, config_3d)
+
+    mass_start = float(np.sum(sol.y[:, 0]) * model.dv)
+    mass_end = float(np.sum(sol.y[:, -1]) * model.dv)
+
+    assert pytest.approx(mass_end, rel=1e-3) == mass_start
+
+
+def test_3d_analytic_fourier_evolution_reference(config_3d):
+    r"""
+    Analytic reference test using Fourier-space diagonalization.
+
+    For constant coefficients:
+
+    .. math::
+        \widehat{N}(\mathbf{k}, t) =
+        e^{(-D|\mathbf{k}|^2 + \rho)\, t}\,\widehat{N}(\mathbf{k},0).
+    """
+    config_3d = dict(config_3d)
+    config_3d["physics"] = dict(config_3d["physics"])
+    config_3d["physics"]["D"] = 0.37
+    config_3d["physics"]["rho"] = 0.18
+
+    model = SpectralNDE3D(config_3d)
+
+    # Use the model-provided initial condition and run the numerical solver.
+    sol = run_pde_solver(model, config_3d)
+    t_end = config_3d["simulation"]["t_end"]
+
+    # Exact evolution in Fourier space:
+    #   N_hat(t_end) = exp((-D*k_sq + rho)*t_end) * N_hat(0)
+    N0_flat = model.get_initial_condition()
+    N0 = N0_flat.reshape(model.nodes)
+    N_hat0 = np.fft.fftn(N0)
+    growth = np.exp((-model.D * model.k_sq + model.rho) * t_end)
+    N_hat_exact = growth * N_hat0
+    N_exact = np.real(np.fft.ifftn(N_hat_exact))
+
+    N_num = sol.y[:, -1].reshape(model.nodes)
+
+    # Compare fields. Tolerance accounts for numerical ODE integration error.
+    denom = float(np.max(np.abs(N_exact)))
+    err = float(np.max(np.abs(N_num - N_exact)))
+    if denom > 0:
+        assert err / denom < 1e-3
+    else:
+        assert err < 1e-8

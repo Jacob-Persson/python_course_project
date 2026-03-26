@@ -57,12 +57,10 @@ class SpectralNDE3D(BaseModel):
         
         # Grid spacing and cell volume element ``dv``.
         #
-        # Note (implementation detail):
-        # We currently use dx = L / (nodes - 1) and construct coordinates with
-        # linspace(0, L, nodes), which includes both endpoints. FFT-based spectral
-        # differentiation is naturally periodic; for strict periodic consistency one
-        # would typically use dx = L / nodes (avoiding duplication of x=0 and x=L).
-        self.dx_vec = self.L / (self.nodes - 1)
+        # FFTs assume a periodic grid where x=0 and x=L are the same point.
+        # To be strictly consistent with that picture we use a periodic grid:
+        #   x_j = j * dx,  j=0..nodes-1,  with dx = L / nodes  (endpoint=False).
+        self.dx_vec = self.L / self.nodes
         self.dv = float(np.prod(self.dx_vec))
         
         # Fourier wave numbers (k-vectors).
@@ -76,9 +74,10 @@ class SpectralNDE3D(BaseModel):
         self.k_sq = KX**2 + KY**2 + KZ**2
         
         # Coordinate grid (used to build initial conditions and for plotting).
-        x = np.linspace(0, self.L[0], self.nodes[0])
-        y = np.linspace(0, self.L[1], self.nodes[1])
-        z = np.linspace(0, self.L[2], self.nodes[2])
+        # Strictly periodic coordinate grid: exclude endpoint x=L to avoid duplicating x=0.
+        x = np.linspace(0, self.L[0], self.nodes[0], endpoint=False)
+        y = np.linspace(0, self.L[1], self.nodes[1], endpoint=False)
+        z = np.linspace(0, self.L[2], self.nodes[2], endpoint=False)
         self.X, self.Y, self.Z = np.meshgrid(x, y, z, indexing='ij')
         self.ic_config = config['initial_condition']
 
