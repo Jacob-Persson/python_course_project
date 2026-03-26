@@ -25,7 +25,17 @@ def config_3d():
     }
 
 def test_3d_exponential_growth(config_3d):
-    """Test: Total population grows by exp(rho * t) regardless of D."""
+    r"""
+    Test: Total population grows by an exponential factor.
+
+    For the linear model
+
+    .. math::
+        M(t) = M(0)\, e^{\rho t},
+
+    where ``M(t)`` is the spatial integral of the neutron density and ``rho`` is
+    the reactivity.
+    """
     config_3d['physics']['D'] = 0.2  # Include diffusion to ensure it doesn't break mass
     model = SpectralNDE3D(config_3d)
     sol = run_pde_solver(model, config_3d)
@@ -39,9 +49,12 @@ def test_3d_exponential_growth(config_3d):
     assert pytest.approx(pop_end, rel=1e-3) == expected_pop
 
 def test_3d_diffusion_greens_function(config_3d):
-    """
+    r"""
     Test: Compare 3D point source diffusion against 3D Green's function.
-    N(r,t) = A / (4*pi*D*t)^1.5 * exp(-r^2 / 4Dt)
+    
+    .. math::
+        N(r,t) = \frac{A}{(4\pi D t)^{3/2}} \exp\left(-\frac{r^2}{4Dt}\right).
+
     """
     config_3d['physics']['rho'] = 0.0 # Pure diffusion
     t_end = config_3d['simulation']['t_end']

@@ -36,6 +36,8 @@ def plot_spatial_slice_2d(model, solution):
 def plot_population_history(model, solution):
     """Plots the total volume integral over time in a separate window."""
     dv = model.dv
+    # Total population / mass:
+    #   M(t) = ∫ N(x,y,z,t) dV  ~= sum_i N_i(t) * dv
     total_pop = [np.sum(solution.y[:, i]) * dv for i in range(len(solution.t))]
     
     plt.figure("Total Population History")
@@ -69,8 +71,12 @@ def plot_spatial_slice_1d(model, solution):
 
 def plot_time_space_evolution(model, solution):
     """
-    Plots Time-Space Evolution (Hovmöller diagram).
-    X-axis: Time, Y-axis: Position X, Color: Density (Log Scale).
+    Plots Time-Space Evolution (Hovmöller diagram) along the X-axis.
+
+    This visualizes the 1D slice:
+        N(x, y_mid, z_mid, t)
+
+    X-axis: Time, Y-axis: Position X, Color: Density (log scale).
     """
     plt.figure("Time-Space Evolution")
     plt.clf()
@@ -104,13 +110,30 @@ def plot_time_space_evolution(model, solution):
     plt.ylabel("Position X (cm)")
     
 def plot_radial_evolution(model, solution):
-    """
-    Plots the Total Neutron Count at distance R from the center over Time.
-    Shows spreading and growth simultaneously on an absolute scale.
+    r"""
+    Plot the radial distribution of neutron density over time.
+
+    For each time frame, we bin grid points by radius
+
+    .. math::
+        r = \sqrt{(x-c_x)^2 + (y-c_y)^2 + (z-c_z)^2},
+
+    and compute a shell-integrated quantity (approximately):
+
+    .. math::
+        H(R_{\rm bin}, t) \approx \sum_{i\in {\rm bin}} N_i(t)\, dv
+        \approx \int_{\rm shell} N(\mathbf{x},t)\, dV.
     """
     nodes = model.nodes.astype(int)
     # 1. Calculate distance from center for every grid point
-    cx, cy, cz = model.L / 2
+    center_offset = model.ic_config.get('center_offset', 0.0)
+    if np.isscalar(center_offset):
+        offset_vec = np.array([float(center_offset)] * 3, dtype=float)
+    else:
+        offset_vec = np.array(center_offset, dtype=float)
+        if offset_vec.size != 3:
+            raise ValueError("center_offset must be a scalar or length-3 array.")
+    cx, cy, cz = (model.L / 2 + offset_vec)
     r = np.sqrt((model.X - cx)**2 + (model.Y - cy)**2 + (model.Z - cz)**2)
     
     # Define radial bins (from center 0 to max corner distance)
@@ -122,9 +145,10 @@ def plot_radial_evolution(model, solution):
 
     for i in range(len(solution.t)):
         N_3d = solution.y[:, i].reshape(nodes)
-        # Sum (Integrate) all neutrons falling into each radial shell
+        # Bin-sum over the grid points belonging to each radial shell.
         hist, _ = np.histogram(r, bins=r_bins, weights=N_3d)
-        radial_time_data.append(hist)
+        # Approximate volume integral by including the cell volume element.
+        radial_time_data.append(hist * model.dv)
 
     data_matrix = np.array(radial_time_data).T
 
@@ -145,7 +169,7 @@ def plot_radial_evolution(model, solution):
         cmap=current_cmap
     )
     
-    plt.colorbar(pcm, label='Total Neutrons in Shell')
+    plt.colorbar(pcm, label='Integral of N over Shell')
     #plt.colorbar(pcm, label='Total Neutrons in Shell (N * 4πr²dr)')
     plt.title("Radial Diffusion: Growth and Outward Spreading")
     plt.xlabel("Time (s)")
