@@ -32,16 +32,3 @@ Utilities (Plotting + Diagnostics)
    :undoc-members:
    :show-inheritance:
 
-Testing
-=======
-
-.. automodule:: tests.test_physics
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. automodule:: tests.test_models
-   :members:
-   :undoc-members:
-   :show-inheritance:
-

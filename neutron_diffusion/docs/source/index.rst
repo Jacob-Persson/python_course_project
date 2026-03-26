@@ -6,6 +6,7 @@ Welcome to neutron_diffusion's documentation!
    :caption: Contents:
 
    modules
+   testing
    theory
    usage
 
