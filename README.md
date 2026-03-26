@@ -34,7 +34,7 @@ python -m sphinx.cmd.build -b html source build
 ```
 
 
-
+## Package structure
 neutron\_diffusion/
 
 ├── docs/                  # Sphinx documentation source and build files
