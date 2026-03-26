@@ -29,6 +29,14 @@ The simulation is controlled via the ``config.yaml`` file. This allows you to mo
       type: "gaussian"  # Options: gaussian, point_source
       amplitude: 1.0
       width: 1.5
+      center_offset: 0.0  # Optional shift: scalar or [dx, dy, dz] (cm)
+
+    output:
+      save_plots: true      # Save figures to disk
+      save_data: true       # Save full simulation state via utils.diagnostics
+      save_dir: "results"  # Output folder under neutron_diffusion/
+      format: "png"         # Figure format: png, pdf, svg, jpg
+      dpi: 300              # Figure resolution
 
 Running a Simulation
 --------------------

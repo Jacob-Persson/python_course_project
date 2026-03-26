@@ -131,3 +131,97 @@ def test_3d_spectral_eigenmode_diffusion(config_3d_basic):
     ratio = rhs[mask] / N[mask]
 
     assert np.allclose(ratio, expected_eig, rtol=1e-2, atol=1e-4)
+
+
+def test_3d_gaussian_center_offset_peak(config_3d_basic):
+    """Gaussian peak should be placed near the requested offset center."""
+    config = dict(config_3d_basic)
+    config["initial_condition"] = {
+        "type": "gaussian",
+        "amplitude": 1.0,
+        "width": 0.2,  # narrower than grid spacing to make the discrete maximum robust
+        "center_offset": 2.5,  # scalar applies to x/y/z
+    }
+
+    model = SpectralNDE3D(config)
+    nodes = model.nodes.astype(int)
+
+    N0 = model.get_initial_condition().reshape(nodes)
+    mid_from_data = np.array(np.unravel_index(np.argmax(N0), nodes))
+
+    center = model.L / 2 + np.array([2.5, 2.5, 2.5], dtype=float)
+    expected_mid = np.clip(
+        np.round(center / model.dx_vec).astype(int),
+        0,
+        nodes - 1,
+    )
+
+    assert np.all(mid_from_data == expected_mid)
+
+
+def test_3d_spectral_eigenmode_growth(config_3d_basic):
+    """
+    Spectral Laplacian eigenmode test including the reaction term.
+
+    For a periodic FFT eigenfunction ``N`` and constant coefficients:
+        dN/dt = (-D|k|^2 + rho) N
+    """
+    config = dict(config_3d_basic)
+    config["physics"] = dict(config_3d_basic["physics"])
+    config["physics"]["rho"] = 0.25
+    config["physics"]["D"] = 0.75
+    model = SpectralNDE3D(config)
+
+    nodes = model.nodes.astype(int)
+    D = model.D
+    rho = model.rho
+
+    kx = 2 * np.pi * fftfreq(nodes[0], d=model.dx_vec[0])
+    ky = 2 * np.pi * fftfreq(nodes[1], d=model.dx_vec[1])
+    kz = 2 * np.pi * fftfreq(nodes[2], d=model.dx_vec[2])
+
+    i, j, k = 1, 0, 0
+    k_mode_sq = kx[i] ** 2 + ky[j] ** 2 + kz[k] ** 2
+    expected_eig = -D * k_mode_sq + rho
+
+    N = np.cos(kx[i] * model.X + ky[j] * model.Y + kz[k] * model.Z)
+    N_flat = N.flatten()
+    rhs_flat = model.compute_rhs(0.0, N_flat)
+    rhs = rhs_flat.reshape(nodes)
+
+    mask = np.abs(N) > 1e-6
+    ratio = rhs[mask] / N[mask]
+
+    assert np.allclose(ratio, expected_eig, rtol=1e-2, atol=1e-4)
+
+
+def test_3d_radial_shell_integral_consistency(config_3d_basic):
+    """Shell-weighted radial histogram should integrate to total mass (dv included)."""
+    config = dict(config_3d_basic)
+    config["initial_condition"] = {
+        "type": "point_source",
+        "amplitude": 7.0,
+        "center_offset": 1.7,
+    }
+
+    model = SpectralNDE3D(config)
+    nodes = model.nodes.astype(int)
+    N0_3d = model.get_initial_condition().reshape(nodes)
+
+    center_offset = model.ic_config.get("center_offset", 0.0)
+    if np.isscalar(center_offset):
+        offset_vec = np.array([float(center_offset)] * 3, dtype=float)
+    else:
+        offset_vec = np.array(center_offset, dtype=float)
+
+    cx, cy, cz = (model.L / 2 + offset_vec)
+    r = np.sqrt((model.X - cx) ** 2 + (model.Y - cy) ** 2 + (model.Z - cz) ** 2)
+
+    r_max = np.max(r)
+    r_bins = np.linspace(0, r_max, nodes[0])
+
+    hist, _ = np.histogram(r, bins=r_bins, weights=N0_3d)
+    shell_integral = float(np.sum(hist * model.dv))
+
+    total_mass = float(np.sum(N0_3d) * model.dv)
+    assert np.isclose(shell_integral, total_mass, rtol=1e-12, atol=1e-12)
