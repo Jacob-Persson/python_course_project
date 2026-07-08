@@ -1,13 +1,13 @@
 This code solves the 3D SPDE
 
 $$
-\partial_t N(\bold{x},t) = D\nabla^2 N(\bold{x},t) + \rho N(\bold{x},t) + \sigma N(\bold{x},t)^2 + \eta(\bold{x},t),
+\partial_t N(\mathbf{x},t) = D\nabla^2 N(\mathbf{x},t) + \rho N(\mathbf{x},t) + \sigma N(\mathbf{x},t)^2 + \eta(\mathbf{x},t),
 $$
 
 with
 
 $$
-\langle\eta (\bold{x},t),\eta (\bold{x}',t')\rangle = 2 T_1 N(\bold{x},t)\delta(\bold{x}-\bold{x}')\,\delta(t-t') ,
+\langle\eta (\mathbf{x},t),\eta (\mathbf{x}',t')\rangle = 2 T_1 N(\mathbf{x},t)\delta(\mathbf{x}-\mathbf{x}')\,\delta(t-t') ,
 $$
 
 using a spectral (FFT) method for the Laplacian and an Ito Euler–Maruyama
