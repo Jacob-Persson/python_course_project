@@ -19,8 +19,8 @@ Solvers
    :undoc-members:
    :show-inheritance:
 
-Utilities (Plotting + Diagnostics)
-====================================
+Utilities (Plotting + Diagnostics + Timer)
+==========================================
 
 .. automodule:: utils.plotting
    :members:
@@ -28,6 +28,11 @@ Utilities (Plotting + Diagnostics)
    :show-inheritance:
 
 .. automodule:: utils.diagnostics
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. automodule:: utils.timer
    :members:
    :undoc-members:
    :show-inheritance:

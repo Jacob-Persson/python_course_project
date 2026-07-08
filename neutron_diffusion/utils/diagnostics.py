@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Mar 25 16:11:18 2026
-
-@author: jacpe396
-"""
-
 import numpy as np
 import pickle
 import json

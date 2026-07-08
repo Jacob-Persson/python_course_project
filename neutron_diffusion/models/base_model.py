@@ -1,21 +1,16 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Mar 24 11:51:47 2026
-
-@author: jacpe396
-"""
-
 from abc import ABC, abstractmethod
+import numpy as np
 
 class BaseModel(ABC):
     """
     Interface for Neutron Diffusion Equation models.
 
-    All physics models (e.g., Linear, Spectral, MSR) must inherit from 
-    this class to ensure compatibility with the system solvers.
+    All physics models (e.g., SpectralNDE3D, MomentClosureNDE3D) must inherit
+    from this class to ensure compatibility with the system solvers.
     """
     @abstractmethod
-    def compute_rhs(self, t: float, N: "np.ndarray") -> "np.ndarray":
+    def compute_rhs(self, t: float, N: np.ndarray) -> np.ndarray:
         r"""
         Compute the right-hand side (RHS) for the ODE system induced by the PDE.
 

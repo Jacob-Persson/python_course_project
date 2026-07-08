@@ -1,6 +1,28 @@
-# python\_course\_project
+This code solves the 3D SPDE
 
-Project description: Solve the neutron diffusion equation and plot the results.
+$$
+\partial_t N = D\nabla^2 N + \rho N + \sigma N^2 + \eta(\mathbf{x},t),
+$$
+
+with
+
+$$
+\langle\eta\,\eta\rangle = 2 T_1 N\,\delta(\mathbf{x}-\mathbf{x}')\,\delta(t-t') ,
+$$
+
+using a spectral (FFT) method for the Laplacian and an Ito Euler–Maruyama
+scheme for the noise.  Two solution modes are available:
+
+1. **Direct stochastic integration** — single noise realisations via
+   `run_stochastic_pde_solver`.
+2. **Gaussian moment closure** (`MomentClosureNDE3D`) — evolves the coupled
+   system for $\langle N \rangle$ and $\langle n^2 \rangle$ with a
+   zero-third-cumulant closure, giving deterministic access to the ensemble
+   mean and variance without averaging over trajectories.
+
+The moment-closure system is integrated with the same adaptive Runge–Kutta
+solver used for the deterministic NDE, and all plotting/diagnostics work
+identically for both modes results.
 
 ## Requirements
 Install dependencies with:
@@ -26,32 +48,21 @@ From the repository root:
 python -m pytest -q
 ```
 
-## Build documentation (optional)
+## Build documentation
 From `neutron_diffusion/docs/`:
 
 ```bash
 python -m sphinx.cmd.build -b html source build
 ```
 
+## Project structure
 
-## Package structure
-neutron\_diffusion/
-
-├── docs/                  # Sphinx documentation source and build files
-
-│   ├── source/            # .rst files and conf.py
-
-│   └── build/             # Generated HTML files
-
-├── models/                # Physics engines (Linear, Spectral, etc.)
-
-├── solvers/               # Numerical integrators (solve\_ivp)
-
-├── tests/                 # Pytest suite for physics verification
-
-├── utils/                 # Plotting and diagnostics
-
-├── config.yaml            # Simulation parameters
-
-└── main.py                # Project entry point
-
+| Directory / file | Purpose |
+|---|---|
+| `models/` | Physics models (`SpectralNDE3D`, `MomentClosureNDE3D`, `BaseModel`) |
+| `solvers/` | ODE integrators (`run_pde_solver`, `run_stochastic_pde_solver`) |
+| `utils/` | Plotting, diagnostics, performance timer |
+| `config.yaml` | All run-time parameters (YAML) |
+| `main.py` | Entry point — runs solver + plots |
+| `tests/` | Pytest suite |
+| `docs/` | Sphinx documentation source |

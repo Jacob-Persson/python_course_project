@@ -1,8 +1,10 @@
 physics:
   D: 0.2
-  rho: 0.05
+  rho: -1.0e-4
+  sigma: -0.05  # Quadratic feedback coefficient (1/(cm^3 s)); 0 = linear NDE
+  T1: 1.0e-5   # Noise amplitude (cm^3/s); 0 = deterministic SPDE
   L: [20.0, 20.0, 20.0]  # Length in x, y, z
-  nodes: [50, 50, 50]    # Number of points in x, y, z
+  nodes: [32, 32, 32]    # Number of points in x, y, z
 
 initial_condition:
   type: "gaussian"  # Options: gaussian, uniform, point_source
@@ -14,10 +16,15 @@ simulation:
   t_end: 30.0
   n_frames: 6
   method: "RK45"
+  rtol: 5.0e-3
+  atol: 1.0e-6
+
+debug:
+  enable_timer: true         # Profile execution time (no effect if false)
 
 output:
   save_plots: true          # Boolean flag to toggle saving
   save_data: true
   save_dir: "results"       # Folder name for saved figures
   format: "png"             # Options: png, pdf, svg, jpg
-  dpi: 300                  # High resolution for research-grade plots
+  dpi: 300                  # Resolution

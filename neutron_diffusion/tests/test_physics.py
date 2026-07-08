@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Mar 24 13:26:37 2026
-
-@author: jacpe396
-"""
-
 import numpy as np
 import pytest
 from models.diffusion import SpectralNDE3D
@@ -16,7 +10,8 @@ def config_3d():
     return {
         'physics': {
             'D': 0.5, 
-            'rho': 0.1, 
+            'rho': 0.1,
+            'sigma': 0.0,
             'L': [20.0, 20.0, 20.0], 
             'nodes': [31, 31, 31]
         },
@@ -37,6 +32,7 @@ def test_3d_exponential_growth(config_3d):
     the reactivity.
     """
     config_3d['physics']['D'] = 0.2  # Include diffusion to ensure it doesn't break mass
+    config_3d['physics']['sigma'] = 0.0  # Linear model only
     model = SpectralNDE3D(config_3d)
     sol = run_pde_solver(model, config_3d)
     
@@ -57,6 +53,7 @@ def test_3d_diffusion_greens_function(config_3d):
 
     """
     config_3d['physics']['rho'] = 0.0 # Pure diffusion
+    config_3d['physics']['sigma'] = 0.0
     t_end = config_3d['simulation']['t_end']
     D = config_3d['physics']['D']
     amp = config_3d['initial_condition']['amplitude']
@@ -98,6 +95,7 @@ def test_3d_pure_diffusion_mass_conservation(config_3d):
     config_3d = dict(config_3d)
     config_3d["physics"] = dict(config_3d["physics"])
     config_3d["physics"]["rho"] = 0.0
+    config_3d["physics"]["sigma"] = 0.0
 
     model = SpectralNDE3D(config_3d)
     sol = run_pde_solver(model, config_3d)
@@ -122,6 +120,7 @@ def test_3d_analytic_fourier_evolution_reference(config_3d):
     config_3d["physics"] = dict(config_3d["physics"])
     config_3d["physics"]["D"] = 0.37
     config_3d["physics"]["rho"] = 0.18
+    config_3d["physics"]["sigma"] = 0.0
 
     model = SpectralNDE3D(config_3d)
 
@@ -147,3 +146,29 @@ def test_3d_analytic_fourier_evolution_reference(config_3d):
         assert err / denom < 1e-3
     else:
         assert err < 1e-8
+
+
+def test_3d_quadratic_feedback_rhs(config_3d):
+    r"""
+    Verify the quadratic feedback term in the RHS.
+
+    With ``D = 0``, ``rho = 0``, and spatially uniform ``N = N_0``:
+
+    .. math::
+        \frac{dN}{dt} = \sigma N_0^2.
+    """
+    config_3d = dict(config_3d)
+    config_3d["physics"] = dict(config_3d["physics"])
+    config_3d["physics"]["D"] = 0.0
+    config_3d["physics"]["rho"] = 0.0
+    config_3d["physics"]["sigma"] = 0.4
+
+    model = SpectralNDE3D(config_3d)
+    n0 = 2.5
+    n_state = int(np.prod(model.nodes))
+    n_flat = np.full(n_state, n0)
+
+    rhs = model.compute_rhs(0.0, n_flat)
+    expected = 0.4 * n0**2
+
+    assert np.allclose(rhs, expected)

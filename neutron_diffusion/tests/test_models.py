@@ -1,10 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Mar 24 13:21:34 2026
-
-@author: jacpe396
-"""
-
 import numpy as np
 import pytest
 from models.diffusion import SpectralNDE3D
@@ -16,7 +10,8 @@ def config_3d_basic():
     return {
         'physics': {
             'D': 1.0, 
-            'rho': 0.0, 
+            'rho': 0.0,
+            'sigma': 0.0,
             'L': [10.0, 10.0, 10.0], 
             'nodes': [21, 21, 21]
         },
@@ -104,6 +99,7 @@ def test_3d_spectral_eigenmode_diffusion(config_3d_basic):
     config["physics"] = dict(config_3d_basic["physics"])
     config["physics"]["rho"] = 0.0
     config["physics"]["D"] = 0.75
+    config["physics"]["sigma"] = 0.0
     model = SpectralNDE3D(config)
 
     nodes = model.nodes.astype(int)
@@ -170,6 +166,7 @@ def test_3d_spectral_eigenmode_growth(config_3d_basic):
     config["physics"] = dict(config_3d_basic["physics"])
     config["physics"]["rho"] = 0.25
     config["physics"]["D"] = 0.75
+    config["physics"]["sigma"] = 0.0
     model = SpectralNDE3D(config)
 
     nodes = model.nodes.astype(int)

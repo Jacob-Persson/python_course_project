@@ -1,8 +1,9 @@
 Testing
 =======
 
-The repository includes a small ``pytest`` suite to verify the deterministic physics
-implemented in :class:`models.diffusion.SpectralNDE3D`.
+The repository includes a ``pytest`` suite (17 tests) covering the
+deterministic NDE, the Gaussian moment closure, and the noise/multiplicative
+stochastic infrastructure.
 
 Run the tests from the repository root:
 
@@ -11,14 +12,30 @@ Run the tests from the repository root:
    python -m pytest -q
 
 What is tested
----------------
+--------------
 
-The tests cover:
+**Deterministic physics** (``test_physics.py``, ``test_models.py``):
 
 * Correctness of the spectral Laplacian operator (via eigenmode relations).
 * Conservation of total mass for pure diffusion (``rho=0``).
 * Agreement with the known analytic Green's function peak for diffusion.
 * Correct handling of initial conditions, including ``initial_condition.center_offset``.
+* Quadratic feedback term ``sigma N^2`` in the RHS (when ``D=rho=0``).
+* Exponential growth of total population for linear NDE.
+* Fourier-space analytic reference evolution.
+
+**Gaussian moment closure** (``test_noise_and_mc.py``):
+
+* Deterministic limit: ``MomentClosureNDE3D`` with ``T1=0`` reproduces
+  ``SpectralNDE3D`` to machine precision, and :math:`\langle n^2 \rangle` is
+  numerically zero.
+* Variance non-negativity: with ``T1 > 0``, :math:`\langle n^2 \rangle \ge 0`
+  at all integration times (within solver tolerance).
+* Uniform-field RHS: closed-form check of the moment-closure PDE for
+  :math:`D=\rho=0` and uniform fields.
+
+**Diagnostics** (``test_diagnostics.py``):
+
 * Persistence/serialization in ``utils.diagnostics.save_simulation_state``.
 
 Equations tested
@@ -112,8 +129,12 @@ Physics-specific overrides in the tests:
   * checks ``M(t_end) \approx M(0)`` with relative tolerance ``1e-3``.
 
 * ``test_3d_analytic_fourier_evolution_reference``:
-  * sets ``D = 0.37`` and ``rho = 0.18``
+  * sets ``D = 0.37``, ``rho = 0.18``, and ``sigma = 0``
   * checks that the field matches the exact Fourier-space evolution at ``t_end`` with max relative error ``< 1e-3``.
+
+* ``test_3d_quadratic_feedback_rhs``:
+  * sets ``D = 0``, ``rho = 0``, ``sigma = 0.4``, and uniform ``N_0 = 2.5``
+  * checks ``dN/dt = sigma N_0^2`` everywhere on the grid.
 
 Model/grid defaults from ``tests/test_models.py::config_3d_basic``:
 

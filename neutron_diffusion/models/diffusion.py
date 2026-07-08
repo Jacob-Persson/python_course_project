@@ -1,14 +1,17 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Tue Mar 24 11:21:12 2026
-
-@author: jacpe396
-"""
-
 import numpy as np
-from numpy.fft import fftn, ifftn, fftfreq
+from numpy.fft import fftfreq
 from .base_model import BaseModel
 from typing import Dict, Any
+from utils.timer import tic, toc
+
+# Use pyfftw if available (2–4× faster FFTs); fall back to numpy.fft.
+try:
+    from pyfftw.interfaces.numpy_fft import fftn, ifftn
+    from pyfftw.interfaces import cache as _cache
+    _cache.enable()
+except ImportError:
+    from numpy.fft import fftn, ifftn
 
 class SpectralNDE3D(BaseModel):
     r"""
@@ -17,10 +20,12 @@ class SpectralNDE3D(BaseModel):
     PDE:
 
     .. math::
-        \partial_t N(\mathbf{x}, t) = D \nabla^2 N(\mathbf{x}, t) + \rho\, N(\mathbf{x}, t)
+        \partial_t N(\mathbf{x}, t) = D \nabla^2 N(\mathbf{x}, t)
+        + \rho\, N(\mathbf{x}, t) + \sigma\, N(\mathbf{x}, t)^2
 
     Here, ``N`` is the neutron density field, ``D`` is the diffusion coefficient
-    (CGS: cm^2/s), and ``rho`` is the reactivity (CGS: 1/s).
+    (CGS: cm^2/s), ``rho`` is the reactivity (CGS: 1/s), and ``sigma`` is the
+    quadratic feedback coefficient (CGS: 1/(cm^3 s)).
 
     Spectral Laplacian:
     Using the Fourier-space identity
@@ -39,6 +44,8 @@ class SpectralNDE3D(BaseModel):
     Attributes:
         D: Diffusion coefficient (cm^2/s).
         rho: Reactivity (1/s).
+        sigma: Quadratic feedback coefficient (1/(cm^3 s)); defaults to 0.
+        T1: Noise amplitude (cm^3/s); 0 = deterministic.
         k_sq: Pre-computed squared wave numbers ``|k|^2`` on the FFT grid.
     """
     
@@ -51,6 +58,8 @@ class SpectralNDE3D(BaseModel):
         """
         p = config['physics']
         self.D, self.rho = p['D'], p['rho']
+        self.sigma = float(p.get('sigma', 0.0))
+        self.T1 = float(p.get('T1', 0.0))
         # Domain size and grid resolution.
         self.L = np.array(p['L'], dtype=float)
         self.nodes = np.array(p['nodes'], dtype=int)
@@ -99,6 +108,10 @@ class SpectralNDE3D(BaseModel):
           ``A / dv`` into the nearest grid cell, so that
           :math:`\int N\, dV \approx \sum_i N_i\, dv = A`.
 
+        * ``type: "uniform"``:
+          constant field :math:`N(\mathbf{x}, 0) = A` everywhere, where ``A`` is
+          ``amplitude``.
+
         * ``center_offset`` (optional):
           shift the source center relative to the domain center. If it is a scalar,
           it is applied equally to x/y/z; if it is a length-3 array, it is applied
@@ -133,6 +146,9 @@ class SpectralNDE3D(BaseModel):
             cx, cy, cz = center  # Source center.
             r_sq = (self.X - cx)**2 + (self.Y - cy)**2 + (self.Z - cz)**2
             return (amp * np.exp(-r_sq / (2 * sigma**2))).flatten()
+
+        elif ic_type == "uniform":
+            return np.full(np.prod(self.nodes), amp, dtype=float)
         
         return np.zeros(self.nodes).flatten()
 
@@ -140,12 +156,15 @@ class SpectralNDE3D(BaseModel):
         r"""
         Compute the RHS ``dN/dt`` for the discretized PDE at time ``t``.
 
-        PDE (linear reaction-diffusion / neutron diffusion):
+        PDE (reaction-diffusion with optional quadratic feedback):
 
         .. math::
-            \partial_t N(\mathbf{x}, t) = D\nabla^2 N(\mathbf{x}, t) + \rho\, N(\mathbf{x}, t).
+            \partial_t N = D\nabla^2 N + \rho N + \sigma N^2.
 
-        Operator mapping to Fourier space:
+        The Laplacian is evaluated spectrally; the local terms ``\rho N`` and
+        ``\sigma N^2`` are applied in physical space after reshaping.
+
+        Operator mapping to Fourier space (diffusion term only):
         Using the spectral identity
 
         .. math::
@@ -157,14 +176,13 @@ class SpectralNDE3D(BaseModel):
             \widehat{\nabla^2 N}(\mathbf{k}, t) = -k^2 \widehat{N}(\mathbf{k}, t).
 
         The code implements:
-        ``N_hat = FFT[N]``; the Laplacian is ``laplacian = IFFT[-k_sq * N_hat]`` with
-        ``k_sq = |k|^2``; and finally
-        ``dN_dt = D * laplacian + rho * N``.
+        ``N_hat = FFT[N]``; ``laplacian = IFFT[-k_sq * N_hat]`` with ``k_sq = |k|^2``;
+        and finally ``dN_dt = D * laplacian + rho * N + sigma * N**2``.
 
         Notes:
         For a consistent model interface, ``t`` is accepted as an argument.
-        For this constant-coefficient linear model, the RHS does not depend explicitly on
-        ``t``.
+        For constant coefficients, the RHS does not depend explicitly on ``t``.
+        When ``sigma = 0``, the model reduces to the linear NDE.
 
         Args:
             t: Current simulation time (s).
@@ -173,16 +191,185 @@ class SpectralNDE3D(BaseModel):
         Returns:
             np.ndarray: Flattened array of dN/dt values.
         """
-        # Reshape to 3D so we can apply FFTs along each axis.
+        tic('rhs.fft')
         N = N_flat.reshape(self.nodes)
-        
-        # Spectral Laplacian:
-        #   laplacian(x) = FFT^{-1}[ -|k|^2 FFT[N(x)] ].
-        # Then include the prefactor ``D`` and the reaction term ``rho * N``.
         N_hat = fftn(N)
-        # Round-off can introduce small imaginary components; the physical
-        # Laplacian of a real field is real, so we take the real part.
         laplacian = np.real(ifftn(-self.k_sq * N_hat))
-        
-        dN_dt = self.D * laplacian + self.rho * N
+        toc('rhs.fft')
+
+        tic('rhs.local')
+        dN_dt = self.D * laplacian + self.rho * N + self.sigma * N**2
+        toc('rhs.local')
         return dN_dt.flatten()
+
+    def compute_noise_amplitude(self, N: np.ndarray) -> np.ndarray:
+        r"""
+        Multiplicative noise amplitude consistent with the Ito-interpretation SPDE
+
+        .. math::
+            \partial_t N = D\nabla^2 N + \rho N + \sigma N^2 + \eta,
+            
+            
+            \langle\eta(\mathbf{x},t)\,\eta(\mathbf{x}',t')\rangle
+            = 2 T_1\, N(\mathbf{x},t)\,\delta(\mathbf{x}-\mathbf{x}')
+              \,\delta(t-t').
+
+        After spatial discretisation the cell-volume element ``dv`` replaces
+        :math:`\delta(\mathbf{x}-\mathbf{x}')`, giving the per-cell amplitude
+
+        .. math::
+            g_i(N) = \sqrt{\frac{2 T_1 N_i}{dv}}.
+
+    Values are clipped to ``N_i \ge 0`` (via ``np.maximum``) so that the
+    square root is always real.
+
+        Args:
+            N: 3-D array of the neutron density field on the full grid.
+
+        Returns:
+            3-D array of noise amplitudes (same shape as ``N``).
+        """
+        if self.T1 == 0.0:
+            return np.zeros_like(N)
+        return np.sqrt(2.0 * self.T1 * np.maximum(N, 0.0) / self.dv)
+
+
+class MomentClosureNDE3D(SpectralNDE3D):
+    r"""
+    Gaussian moment closure for the stochastic neutron diffusion equation.
+
+    Inherits the spectral (FFT) infrastructure from :class:`SpectralNDE3D`.
+
+    Instead of drawing individual noise realisations we evolve the first two
+    moments of the density field directly.  The state vector contains the
+    ensemble-mean field :math:`\langle N \rangle` and the variance
+    :math:`\langle n^2 \rangle` (where :math:`n = N - \langle N \rangle`).
+    The evolution equations are derived from the SPDE
+
+    .. math::
+
+        \partial_t N = D\nabla^2 N + \rho N + \sigma N^2
+                      + \eta(\mathbf{x},t)
+
+        \langle\eta(\mathbf{x},t)\,\eta(\mathbf{x}',t')\rangle
+        = 2 T_1\, N(\mathbf{x},t)\,\delta(\mathbf{x}-\mathbf{x}')
+          \delta(t-t'),
+
+    together with a Gaussian (zero-third-cumulant) closure :math:`\langle
+    n^3 \rangle = 0` and a gradient-diffusion model for the dissipative term
+
+    .. math::
+
+        \langle |\nabla n|^2 \rangle = k_0^2\,\langle n^2 \rangle,
+        \qquad k_0 = \frac{\pi}{\Delta x_{\rm avg}},
+
+    which accounts for the damping of sub-grid fluctuations by diffusion.
+
+    The resulting deterministic system for the two moments is
+
+    .. math::
+
+        \partial_t \langle N \rangle
+          = D\nabla^2 \langle N \rangle
+            + \rho \langle N \rangle
+            + \sigma \langle N \rangle^2
+            + \sigma \langle n^2 \rangle,
+
+        \partial_t \langle n^2 \rangle
+          = D\nabla^2 \langle n^2 \rangle
+            + 2\rho \langle n^2 \rangle
+            + 4\sigma \langle N \rangle \langle n^2 \rangle
+            - 2 D k_0^2 \langle n^2 \rangle
+            + \frac{2 T_1 \langle N \rangle}{dv}.
+
+    Because the right-hand side is purely deterministic, the system is
+    integrated with ``run_pde_solver`` (the same SciPy-based ODE solver used
+    for the deterministic NDE).  A restoring term
+    :math:`-\min(\langle n^2 \rangle_{\rm raw}, 0) \times 10^4` is added to
+    the variance RHS to correct solver-induced negative values (see
+    ``compute_rhs``).  The state vector is twice as large:
+
+        ``y = [⟨N⟩(x,y,z) flattened;  ⟨n²⟩(x,y,z) flattened]``.
+
+    When :math:`T_1 = 0` the variance equation has no source so
+    :math:`\langle n^2 \rangle \equiv 0`, and the mean reduces to the
+    deterministic nonlinear NDE.
+
+    Attributes:
+        n_state_half: Number of degrees of freedom for a single field
+            (``= prod(nodes)``); the full state length is ``2 * n_state_half``.
+        k0_sq: Squared characteristic wavenumber used in the dissipative
+            closure, :math:`k_0^2 = (\pi / \Delta x_{\rm avg})^2`.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.n_state_half = int(np.prod(self.nodes))
+        # Characteristic wavenumber for the dissipative term.
+        dx_avg = float(np.mean(self.dx_vec))
+        self.k0_sq = (np.pi / dx_avg) ** 2
+
+    def get_initial_condition(self):
+        r"""
+        Stack the initial mean (identical to the deterministic initial
+        condition) and the initial variance (identically zero).
+
+        Returns:
+            Flattened array ``[⟨N⟩_flat;  ⟨n²⟩_flat]`` of length
+            ``2 * prod(nodes)``.
+        """
+        n0 = super().get_initial_condition()
+        var0 = np.zeros_like(n0)
+        return np.concatenate([n0, var0])
+
+    def compute_rhs(self, t: float, y_flat: np.ndarray) -> np.ndarray:
+        r"""
+        Right-hand side for the two-moment system.
+
+        The first half of ``y_flat`` is :math:`\langle N \rangle` and the
+        second half is :math:`\langle n^2 \rangle`.
+
+        The raw (unclipped) variance is used to detect any solver-induced
+        negative values; a restoring term
+        :math:`-\min(\langle n^2 \rangle_{\rm raw}, 0) \times 10^4` rapidly
+        pushes them back to zero.
+
+        Args:
+            t: Current simulation time (s).
+            y_flat: Flattened state vector of length ``2 * prod(nodes)``.
+
+        Returns:
+            Flattened RHS vector of the same length.
+        """
+        n = y_flat[:self.n_state_half].reshape(self.nodes)
+        var_raw = y_flat[self.n_state_half:].reshape(self.nodes)
+        var = np.maximum(var_raw, 0.0)
+
+        tic('rhs_mc.fft')
+        n_hat = fftn(n)
+        var_hat = fftn(var)
+        lap_n = np.real(ifftn(-self.k_sq * n_hat))
+        lap_var = np.real(ifftn(-self.k_sq * var_hat))
+        toc('rhs_mc.fft')
+
+        tic('rhs_mc.local')
+        dn_dt = (self.D * lap_n
+                 + self.rho * n
+                 + self.sigma * n ** 2
+                 + self.sigma * var)
+
+        dvar_dt = (self.D * lap_var
+                   + 2.0 * self.rho * var
+                   + 4.0 * self.sigma * n * var
+                   - 2.0 * self.D * self.k0_sq * var
+                   + 2.0 * self.T1 * n / self.dv)
+
+        # Restoring force for unphysical negative variance.
+        # The ODE solver can overshoot below zero at cells where both N and
+        # ⟨n²⟩ are near zero.  This correction brings them back with a
+        # sub-millisecond time constant, much faster than any physical scale.
+        negativity = np.minimum(var_raw, 0.0)
+        dvar_dt += -negativity * 1e4
+        toc('rhs_mc.local')
+
+        return np.concatenate([dn_dt.flatten(), dvar_dt.flatten()])
