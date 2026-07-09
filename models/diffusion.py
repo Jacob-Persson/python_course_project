@@ -373,3 +373,170 @@ class MomentClosureNDE3D(SpectralNDE3D):
         toc('rhs_mc.local')
 
         return np.concatenate([dn_dt.flatten(), dvar_dt.flatten()])
+
+
+class ThirdOrderMomentClosureNDE3D(SpectralNDE3D):
+    r"""
+    Third-order moment closure for the stochastic neutron diffusion equation.
+
+    Extends the Gaussian closure (:class:`MomentClosureNDE3D`) by promoting
+    the third cumulant :math:`\langle n^3 \rangle` to a dynamical variable
+    instead of discarding it.  The state vector contains three fields:
+    the ensemble-mean density :math:`\langle N \rangle`, the variance
+    :math:`\langle n^2 \rangle`, and the third cumulant
+    :math:`\langle n^3 \rangle`, where :math:`n = N - \langle N \rangle`.
+
+    The evolution equations are derived from the SPDE
+
+    .. math::
+
+        \partial_t N = D\nabla^2 N + \rho N + \sigma N^2
+                      + \eta(\mathbf{x},t)
+
+        \langle\eta(\mathbf{x},t)\,\eta(\mathbf{x}',t')\rangle
+        = 2 T_1\, N(\mathbf{x},t)\,\delta(\mathbf{x}-\mathbf{x}')
+          \delta(t-t'),
+
+    keeping :math:`\langle n^3 \rangle` as a dynamical variable and closing
+    at the fourth-cumulant level (:math:`\langle n^4 \rangle_c = 0`).
+    The dissipative sub-grid terms are modelled by
+
+    .. math::
+
+        \langle |\nabla n|^2 \rangle = k_0^2\,\langle n^2 \rangle,
+        \qquad
+        \langle n|\nabla n|^2 \rangle = k_1^2\,\langle n^3 \rangle,
+        \qquad k_0 = k_1 = \frac{\pi}{\Delta x_{\rm avg}}.
+
+    The resulting deterministic system for the three moments is
+
+    .. math::
+
+        \partial_t \langle N \rangle
+          = D\nabla^2 \langle N \rangle
+            + \rho \langle N \rangle
+            + \sigma \langle N \rangle^2
+            + \sigma \langle n^2 \rangle,
+
+        \partial_t \langle n^2 \rangle
+          = D\nabla^2 \langle n^2 \rangle
+            + 2\rho \langle n^2 \rangle
+            + 4\sigma \langle N \rangle \langle n^2 \rangle
+            + 2\sigma \langle n^3 \rangle
+            - 2 D k_0^2 \langle n^2 \rangle
+            + \frac{2 T_1 \langle N \rangle}{dv},
+
+        \partial_t \langle n^3 \rangle
+          = D\nabla^2 \langle n^3 \rangle
+            + 3\rho \langle n^3 \rangle
+            + 6\sigma \langle N \rangle \langle n^3 \rangle
+            + 6\sigma \langle n^2 \rangle^2
+            - 6 D k_1^2 \langle n^3 \rangle
+            + \frac{6 T_1 \langle n^2 \rangle}{dv}.
+
+    The system is deterministic and integrated with ``run_pde_solver``.
+    The state vector is three times the single-field size:
+
+        ``y = [⟨N⟩ flattened; ⟨n²⟩ flattened; ⟨n³⟩ flattened]``.
+
+    When :math:`\langle n^3 \rangle = 0` the first two equations reduce
+    exactly to the Gaussian closure (:class:`MomentClosureNDE3D`).
+
+    Attributes:
+        n_state_half: Number of degrees of freedom for a single field
+            (``= prod(nodes)``); the full state length is
+            ``3 * n_state_half``.
+        k0_sq: Squared characteristic wavenumber for the variance
+            dissipation, :math:`k_0^2 = (\pi / \Delta x_{\rm avg})^2`.
+        k1_sq: Squared characteristic wavenumber for the third-moment
+            dissipation, :math:`k_1^2 = (\pi / \Delta x_{\rm avg})^2`.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.n_state_half = int(np.prod(self.nodes))
+        dx_avg = float(np.mean(self.dx_vec))
+        self.k0_sq = (np.pi / dx_avg) ** 2
+        self.k1_sq = (np.pi / dx_avg) ** 2
+
+    def get_initial_condition(self):
+        r"""
+        Stack the initial mean (identical to the deterministic initial
+        condition), the initial variance (identically zero), and the
+        initial third cumulant (identically zero).
+
+        Returns:
+            Flattened array ``[⟨N⟩_flat; ⟨n²⟩_flat; ⟨n³⟩_flat]`` of
+            length ``3 * prod(nodes)``.
+        """
+        n0 = super().get_initial_condition()
+        var0 = np.zeros_like(n0)
+        third0 = np.zeros_like(n0)
+        return np.concatenate([n0, var0, third0])
+
+    def compute_rhs(self, t: float, y_flat: np.ndarray) -> np.ndarray:
+        r"""
+        Right-hand side for the three-moment system.
+
+        The three blocks of ``y_flat`` are, in order,
+        :math:`\langle N \rangle`, :math:`\langle n^2 \rangle`, and
+        :math:`\langle n^3 \rangle`.
+
+        A restoring term
+        :math:`-\min(\langle n^2 \rangle_{\rm raw}, 0) \times 10^4`
+        is added to the variance RHS to correct solver-induced negative
+        values.  The third cumulant is not restored — it may be positive
+        or negative by physics.
+
+        Args:
+            t: Current simulation time (s).
+            y_flat: Flattened state vector of length
+                ``3 * prod(nodes)``.
+
+        Returns:
+            Flattened RHS vector of the same length.
+        """
+        nh = self.n_state_half
+        n = y_flat[:nh].reshape(self.nodes)
+        var_raw = y_flat[nh:2*nh].reshape(self.nodes)
+        third_raw = y_flat[2*nh:].reshape(self.nodes)
+
+        var = np.maximum(var_raw, 0.0)
+
+        tic('rhs_mc3.fft')
+        n_hat = fftn(n)
+        var_hat = fftn(var)
+        third_hat = fftn(third_raw)
+        lap_n = np.real(ifftn(-self.k_sq * n_hat))
+        lap_var = np.real(ifftn(-self.k_sq * var_hat))
+        lap_third = np.real(ifftn(-self.k_sq * third_hat))
+        toc('rhs_mc3.fft')
+
+        tic('rhs_mc3.local')
+        dn_dt = (self.D * lap_n
+                 + self.rho * n
+                 + self.sigma * n ** 2
+                 + self.sigma * var)
+
+        dvar_dt = (self.D * lap_var
+                   + 2.0 * self.rho * var
+                   + 4.0 * self.sigma * n * var
+                   + 2.0 * self.sigma * third_raw
+                   - 2.0 * self.D * self.k0_sq * var
+                   + 2.0 * self.T1 * n / self.dv)
+
+        dthird_dt = (self.D * lap_third
+                     + 3.0 * self.rho * third_raw
+                     + 6.0 * self.sigma * n * third_raw
+                     + 6.0 * self.sigma * var ** 2
+                     - 6.0 * self.D * self.k1_sq * third_raw
+                     + 6.0 * self.T1 * var / self.dv)
+
+        # Restoring force for unphysical negative variance.
+        negativity = np.minimum(var_raw, 0.0)
+        dvar_dt += -negativity * 1e4
+        toc('rhs_mc3.local')
+
+        return np.concatenate([dn_dt.flatten(),
+                               dvar_dt.flatten(),
+                               dthird_dt.flatten()])

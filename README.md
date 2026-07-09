@@ -1,4 +1,6 @@
-This code solves the 3D SPDE
+# Neutron diffusion
+
+Spectral 3D solver for the stochastic neutron diffusion equation
 
 $$
 \partial_t N(\mathbf{x},t) = D\nabla^2 N(\mathbf{x},t) + \rho N(\mathbf{x},t) + \sigma N(\mathbf{x},t)^2 + \eta(\mathbf{x},t),
@@ -10,19 +12,19 @@ $$
 \langle\eta (\mathbf{x},t),\eta (\mathbf{x}',t')\rangle = 2 T_1 N(\mathbf{x},t)\delta(\mathbf{x}-\mathbf{x}')\,\delta(t-t') ,
 $$
 
-using a spectral (FFT) method for the Laplacian and an Ito Euler–Maruyama
-scheme for the noise.  Two solution modes are available:
+using FFT-based Laplacian and Ito Euler–Maruyama noise integration.
 
-1. **Direct stochastic integration** — single noise realisations via
-   `run_stochastic_pde_solver`.
-2. **Gaussian moment closure** (`MomentClosureNDE3D`) — evolves the coupled
-   system for $\langle N \rangle$ and $\langle n^2 \rangle$ with a
-   zero-third-cumulant closure, giving deterministic access to the ensemble
-   mean and variance without averaging over trajectories.
+## Solution modes
 
-The moment-closure system is integrated with the same adaptive Runge–Kutta
-solver used for the deterministic NDE, and all plotting/diagnostics work
-identically for both modes results.
+| Mode | Description |
+|---|---|
+| **Deterministic NDE** ($T_1=0$, $\sigma=0$) | Linear diffusion + growth |
+| **Nonlinear deterministic** ($T_1=0$, $\sigma\neq0$) | Quadratic feedback |
+| **Direct stochastic** ($T_1>0$) | Single noise realisations with CFL sub-stepping |
+| **Gaussian moment closure** (`order: 2`) | Evolves $\langle N\rangle$, $\langle n^2\rangle$; $\langle n^3\rangle=0$ |
+| **Third-order closure** (`order: 3`) | Evolves $\langle N\rangle$, $\langle n^2\rangle$, $\langle n^3\rangle$; $\langle n^4\rangle=3\langle n^2\rangle^2$ |
+
+Both closures use adaptive RK45 (deterministic) and include sub-grid scale dissipation. Critical exponents ($\nu=1/2$, $z=2$, $\eta=0$) are extracted from spectral data.
 
 ## Requirements
 Install dependencies with:
@@ -31,38 +33,31 @@ Install dependencies with:
 pip install -r requirements.txt
 ```
 
-## Run the simulation
-From the repository root, run:
+## Quick start
 
 ```bash
-cd neutron_diffusion
 python main.py
 ```
 
-This reads `config.yaml`, solves the PDE, displays plots, and (optionally) saves figures and the full simulation state depending on `output.*` in the config.
-
-## Run tests
-From the repository root:
-
+Tests:
 ```bash
 python -m pytest -q
 ```
 
-## Build documentation
-From `neutron_diffusion/docs/`:
-
+Docs:
 ```bash
+cd docs
 python -m sphinx.cmd.build -b html source build
 ```
 
 ## Project structure
 
-| Directory / file | Purpose |
+| Path | Purpose |
 |---|---|
-| `models/` | Physics models (`SpectralNDE3D`, `MomentClosureNDE3D`, `BaseModel`) |
-| `solvers/` | ODE integrators (`run_pde_solver`, `run_stochastic_pde_solver`) |
-| `utils/` | Plotting, diagnostics, performance timer |
-| `config.yaml` | All run-time parameters (YAML) |
-| `main.py` | Entry point — runs solver + plots |
+| `main.py` | Entry point |
+| `config.yaml` | Run-time parameters |
+| `models/` | `SpectralNDE3D`, `MomentClosureNDE3D`, `ThirdOrderMomentClosureNDE3D` |
+| `solvers/` | `run_pde_solver`, `run_stochastic_pde_solver` |
+| `utils/` | Plotting, diagnostics, timer, critical exponents |
 | `tests/` | Pytest suite |
-| `docs/` | Sphinx documentation source |
+| `docs/` | Sphinx documentation |

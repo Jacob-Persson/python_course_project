@@ -4,13 +4,16 @@ physics:
   sigma: -0.05  # Quadratic feedback coefficient (1/(cm^3 s)); 0 = linear NDE
   T1: 1.0e-5   # Noise amplitude (cm^3/s); 0 = deterministic SPDE
   L: [20.0, 20.0, 20.0]  # Length in x, y, z
-  nodes: [32, 32, 32]    # Number of points in x, y, z
+  nodes: [24, 24, 24]    # Number of points in x, y, z
 
 initial_condition:
   type: "gaussian"  # Options: gaussian, uniform, point_source
   amplitude: 1.0
   width: 1.0
   center_offset: 0.0  # 0.0 means center of the domain
+
+moment_closure:
+  order: 3             # 2 = Gaussian closure, 3 = third-order
 
 simulation:
   t_end: 30.0

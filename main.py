@@ -3,7 +3,9 @@ import yaml
 import matplotlib.pyplot as plt
 from pathlib import Path
 from copy import deepcopy
-from models.diffusion import SpectralNDE3D, MomentClosureNDE3D
+from models.diffusion import (
+    SpectralNDE3D, MomentClosureNDE3D, ThirdOrderMomentClosureNDE3D,
+)
 from solvers.integrator import run_pde_solver, run_stochastic_pde_solver
 from utils.plotting import (
     plot_spatial_slice_1d, plot_spatial_slice_2d,
@@ -12,6 +14,7 @@ from utils.plotting import (
 )
 from utils.diagnostics import save_simulation_state
 from utils.timer import tic, toc, report as timer_report, enable as timer_enable
+from utils.critical_exponents import print_exponents
 
 def main():
     plt.close('all')
@@ -58,9 +61,13 @@ def main():
 
     # 2d) Moment-closure ensemble average.
     solution_mc = None
+    mc_order = config.get('moment_closure', {}).get('order', 2)
     if T1 > 0.0:
         tic('solver.moment_closure')
-        model_mc = MomentClosureNDE3D(config)
+        if mc_order == 3:
+            model_mc = ThirdOrderMomentClosureNDE3D(config)
+        else:
+            model_mc = MomentClosureNDE3D(config)
         solution_mc = run_pde_solver(model_mc, config)
         toc('solver.moment_closure')
 
@@ -94,7 +101,7 @@ def main():
             dpi = out_cfg.get('dpi', 300)
             plt.savefig(save_dir / f"{name}.{ext}", dpi=dpi, bbox_inches='tight')
 
-    # 4b) Noise-induced mean shift (only when both MC and det-nonlinear exist).
+    # 4b) Noise-induced mean shift.
     if T1 > 0.0 and solution_mc is not None and solution_nonlinear_det is not None:
         tic('plot.mean_shift')
         plot_mean_shift(model, solution_mc, solution_nonlinear_det)
@@ -110,7 +117,12 @@ def main():
         save_simulation_state(model, solution, config)
         toc('save_data')
 
-    # 6) Arrange and show.
+    # 6) Print MSR critical exponents.
+    tic('critical_exponents')
+    print_exponents(config)
+    toc('critical_exponents')
+
+    # 7) Arrange and show.
     arrange_figure_windows()
     toc('total')
     timer_report()

@@ -67,9 +67,13 @@ def plot_mean_shift(model, solution_mc, solution_nonlinear_det):
     This visualises the effect of the multiplicative noise on the ensemble-
     averaged density relative to the deterministic nonlinear reference.
     """
-    n_state_half = solution_mc.y.shape[0] // 2
-    N_mc = solution_mc.y[:n_state_half, -1].reshape(model.nodes)
+    nc = int(np.prod(model.nodes.astype(int)))
+    N_mc = solution_mc.y[:nc, -1].reshape(model.nodes)
     N_det = solution_nonlinear_det.y[:, -1].reshape(model.nodes)
+
+    is_3rd = (solution_mc.y.shape[0] == 3 * nc)
+    label = ('⟨N⟩ (3rd-order closure)' if is_3rd
+             else '⟨N⟩ (Gaussian closure)')
 
     mid_y, mid_z = model.nodes[1] // 2, model.nodes[2] // 2
     delta = N_mc[:, mid_y, mid_z] - N_det[:, mid_y, mid_z]
@@ -77,12 +81,13 @@ def plot_mean_shift(model, solution_mc, solution_nonlinear_det):
 
     plt.figure("Mean Shift")
     plt.clf()
-    plt.plot(x_axis, delta, 'r-', lw=2)
+    plt.plot(x_axis, delta, 'r-', lw=2, label=label)
     plt.axhline(0, color='grey', ls='--', lw=1)
     t_final = solution_mc.t[-1]
     plt.title(f"Noise-Induced Mean Shift, t = {t_final:.2f} s")
     plt.xlabel("Position X (cm)")
     plt.ylabel(r"$\Delta N = \langle N \rangle - N_{\rm det}$")
+    plt.legend(loc='upper left')
     plt.grid(True, alpha=0.3)
 
 
@@ -105,11 +110,13 @@ def plot_spatial_slice_1d(model, solution, solution_linear=None,
 
     # --- Moment-closure ensemble average ⟨N⟩ ---
     if model.T1 > 0 and solution_mc is not None:
-        n_state_half = solution_mc.y.shape[0] // 2
-        N_mc = solution_mc.y[:n_state_half, -1].reshape(model.nodes)
+        nc = int(np.prod(model.nodes.astype(int)))
+        is_3rd = (solution_mc.y.shape[0] == 3 * nc)
+        N_mc = solution_mc.y[:nc, -1].reshape(model.nodes)
         n_1d_mc = N_mc[:, mid_y, mid_z]
-        plt.plot(x_axis, n_1d_mc, '-.', color='blue', lw=2,
-                 label='⟨N⟩ (moment closure)')
+        mc_label = ('⟨N⟩ (3rd-order closure)' if is_3rd
+                    else '⟨N⟩ (moment closure)')
+        plt.plot(x_axis, n_1d_mc, '-.', color='blue', lw=2, label=mc_label)
 
     # --- Deterministic nonlinear (same σ, T₁ = 0) ---
     if model.T1 > 0 and solution_nonlinear_det is not None:

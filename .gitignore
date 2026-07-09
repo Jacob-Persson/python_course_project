@@ -2,5 +2,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .DS_Store
-neutron_diffusion/docs/build/
-neutron_diffusion/results/
+docs/build/
+results/

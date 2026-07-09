@@ -21,17 +21,20 @@ The simulation is controlled via the ``config.yaml`` file. This allows you to mo
 
     physics:
       D: 0.2                  # Diffusion coefficient (cm^2/s)
-      rho: 0.05               # Reactivity (1/s)
-      sigma: -0.1             # Quadratic feedback (0 = linear NDE)
-      T1: 1.0e-4              # Noise amplitude (cm^3/s); 0 = deterministic
+      rho: -1.0e-4            # Reactivity (1/s); negative = subcritical
+      sigma: -0.05            # Quadratic feedback (0 = linear NDE)
+      T1: 1.0e-5              # Noise amplitude (cm^3/s); 0 = deterministic
       L: [20.0, 20.0, 20.0]   # Box dimensions (cm)
-      nodes: [32, 32, 32]     # Grid points per axis [nx, ny, nz]
+      nodes: [24, 24, 24]     # Grid points per axis [nx, ny, nz]
 
     initial_condition:
       type: "gaussian"        # Options: gaussian, point_source, uniform
       amplitude: 1.0
       width: 1.0
       center_offset: 0.0      # Optional shift: scalar or [dx, dy, dz] (cm)
+
+    moment_closure:
+      order: 3                # 2 = Gaussian closure, 3 = third-order closure
 
     simulation:
       t_end: 30.0             # Total integration time (s)
@@ -41,12 +44,12 @@ The simulation is controlled via the ``config.yaml`` file. This allows you to mo
       atol: 1.0e-6            # Absolute tolerance
 
     debug:
-      enable_timer: false     # Profile execution (no code changes needed)
+      enable_timer: true      # Profile execution (no effect if false)
 
     output:
       save_plots: false       # Save figures to disk
       save_data: false        # Save full simulation state
-      save_dir: "results"     # Output folder under neutron_diffusion/
+      save_dir: "results"     # Output folder
       format: "png"           # Figure format: png, pdf, svg, jpg
       dpi: 300                # Figure resolution
 
@@ -68,14 +71,20 @@ The script will:
    * ``T1 = 0`` → deterministic Runge–Kutta integrator (``run_pde_solver``).
    * ``T1 > 0`` → explicit Euler–Maruyama integrator (``run_stochastic_pde_solver``).
 
-4. Solve three reference solutions for comparison:
+4. Solve reference solutions for comparison:
 
    * **Linear** (``sigma=0, T1=0``)
    * **Deterministic nonlinear** (same ``sigma``, ``T1=0``)
-   * **Moment closure** (only when ``T1>0``) — the Gaussian moment-closure
-     system for :math:`\langle N \rangle` and :math:`\langle n^2 \rangle`.
+   * **Moment closure** (only when ``T1>0``) — the moment-closure
+     system for :math:`\langle N \rangle` and :math:`\langle n^2
+     \rangle` (Gaussian closure, ``order=2``) or the three-field
+     system including :math:`\langle n^3 \rangle` (third-order closure,
+     ``order=3``).
 
-5. Generate plots — the 1D spatial distribution overlays the main solution,
+5. Optionally extract the mean-field critical exponents :math:`\nu`,
+   :math:`z`, and :math:`\eta` from the linearised propagator.
+
+6. Generate plots — the 1D spatial distribution overlays the main solution,
    linear reference, deterministic nonlinear reference, and moment-closure
    mean (when available).  A dedicated "Mean Shift" plot shows
    :math:`\Delta N = \langle N \rangle - N_{\rm det}`.

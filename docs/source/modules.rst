@@ -19,8 +19,8 @@ Solvers
    :undoc-members:
    :show-inheritance:
 
-Utilities (Plotting + Diagnostics + Timer)
-==========================================
+Utilities (Plotting + Diagnostics + Timer + Critical Exponent)
+===============================================================
 
 .. automodule:: utils.plotting
    :members:
@@ -36,4 +36,10 @@ Utilities (Plotting + Diagnostics + Timer)
    :members:
    :undoc-members:
    :show-inheritance:
+
+.. automodule:: utils.critical_exponents
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 

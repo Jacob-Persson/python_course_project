@@ -148,6 +148,41 @@ def test_3d_analytic_fourier_evolution_reference(config_3d):
         assert err < 1e-8
 
 
+def test_critical_exponents_nu_and_z():
+    r"""
+    The critical-exponent extraction must return nu = 0.5 and z = 2.0
+    (Gaussian fixed point in d=3).
+    """
+    from utils.critical_exponents import sweep_nu, compute_z
+    from models.diffusion import SpectralNDE3D
+
+    base = {
+        'physics': {'D': 0.5, 'rho': 0.1, 'sigma': 0.0, 'T1': 0.0,
+                    'L': [20.0, 20.0, 20.0], 'nodes': [16, 16, 16]},
+        'initial_condition': {'type': 'gaussian', 'amplitude': 1.0, 'width': 1.0},
+    }
+
+    rho_values = np.linspace(-0.4, -0.02, 6)
+    nu, xi_list, rho_used = sweep_nu(base, rho_values)
+
+    assert len(rho_used) >= 2, (
+        f"Too few rho values accepted by sweep: {len(rho_used)}"
+    )
+    assert abs(nu - 0.5) < 1e-10, (
+        f"nu = {nu:.6f}, expected 0.5"
+    )
+
+    cfg = dict(base)
+    cfg["physics"] = dict(cfg["physics"])
+    cfg["physics"]["rho"] = 0.0
+    model = SpectralNDE3D(cfg)
+    z = compute_z(model)
+
+    assert abs(z - 2.0) < 1e-10, (
+        f"z = {z:.6f}, expected 2.0"
+    )
+
+
 def test_3d_quadratic_feedback_rhs(config_3d):
     r"""
     Verify the quadratic feedback term in the RHS.

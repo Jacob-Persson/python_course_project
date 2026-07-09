@@ -81,9 +81,11 @@ def run_stochastic_pde_solver(model, config):
     n_frames = len(t_eval)
     dt_frame = t_eval[1] - t_eval[0]
 
-    # Fixed sub-step chosen to satisfy the CFL condition for explicit Euler
+    # Sub-step chosen to satisfy the CFL condition for explicit Euler
     # on the diffusive term:  D * dt / dx^2 < 0.5.
-    dt_sub = min(dt_frame / 100, 0.05)
+    dx_min = float(np.min(model.dx_vec))
+    dt_cfl = 0.4 * dx_min ** 2 / model.D
+    dt_sub = min(dt_frame / 100, dt_cfl, 0.05)
 
     # Initial condition.
     N = model.get_initial_condition().copy()

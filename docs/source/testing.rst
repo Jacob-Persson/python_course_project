@@ -1,9 +1,10 @@
 Testing
 =======
 
-The repository includes a ``pytest`` suite (17 tests) covering the
-deterministic NDE, the Gaussian moment closure, and the noise/multiplicative
-stochastic infrastructure.
+The repository includes a ``pytest`` suite (28 tests) covering the
+deterministic NDE, the moment-closure models (Gaussian and third-order),
+the Euler–Maruyama stochastic integrator, the critical-exponent extraction,
+and the diagnostic tools.
 
 Run the tests from the repository root:
 
@@ -33,6 +34,39 @@ What is tested
   at all integration times (within solver tolerance).
 * Uniform-field RHS: closed-form check of the moment-closure PDE for
   :math:`D=\rho=0` and uniform fields.
+
+**Third-order moment closure** (``test_noise_and_mc.py``):
+
+* Deterministic limit: ``ThirdOrderMomentClosureNDE3D`` with ``T1=0``
+  reproduces ``SpectralNDE3D`` to machine precision, and both
+  :math:`\langle n^2 \rangle` and :math:`\langle n^3 \rangle` are
+  numerically zero.
+* Variance non-negativity: with ``T1 > 0``,
+  :math:`\langle n^2 \rangle \ge 0` at all integration times.
+* Uniform-field RHS: closed-form check of the three-field system for
+  :math:`D=\rho=0` and uniform fields.
+* Pure noise source: :math:`d\langle n^3 \rangle/dt = 6 T_1 \langle n^2
+  \rangle / dv` when :math:`\sigma = 0`.
+* Consistency with Gaussian closure: when :math:`\langle n^3 \rangle = 0`,
+  the first two RHS blocks match ``MomentClosureNDE3D`` exactly.
+
+**Noise amplitude helper** (``test_noise_and_mc.py``):
+
+* Zero amplitude when ``T1=0``.
+* Correct form :math:`g = \sqrt{2 T_1 N / dv}` for uniform fields.
+* Negative ``N`` is clipped to zero.
+
+**Stochastic integrator** (``test_noise_and_mc.py``):
+
+* Deterministic limit: Euler–Maruyama with ``T1=0`` reproduces the
+  ``run_pde_solver`` result to machine precision.
+
+**Critical exponents** (``test_physics.py``):
+
+* :math:`\nu = 0.5` from the :math:`\rho`-sweep of the linearised
+  propagator.
+* :math:`z = 2.0` from the spectral dispersion
+  :math:`\Gamma(k) = D k^2`.
 
 **Diagnostics** (``test_diagnostics.py``):
 
