@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 import pytest
 from models.diffusion import (
@@ -33,8 +35,7 @@ def test_mc_deterministic_limit(config_mc):
     (to numerical precision).  The mean equation then reduces to the
     deterministic NDE, so ⟨N⟩ should match the SpectralNDE3D reference.
     """
-    cfg = dict(config_mc)
-    cfg["physics"] = dict(cfg["physics"])
+    cfg = copy.deepcopy(config_mc)
     cfg["physics"]["T1"] = 0.0
 
     # Moment-closure model.
@@ -45,10 +46,10 @@ def test_mc_deterministic_limit(config_mc):
     model_det = SpectralNDE3D(cfg)
     sol_det = run_pde_solver(model_det, cfg)
 
-    n_half = model_mc.n_state_half
+    n_block = model_mc.n_state_block
 
     # ⟨N⟩ should match N_det at every output time.
-    N_mc = sol_mc.y[:n_half, :]
+    N_mc = sol_mc.y[:n_block, :]
     N_det = sol_det.y[:, :]
     rel_err = np.max(np.abs(N_mc - N_det)) / np.max(np.abs(N_det))
     assert rel_err < 1e-6, (
@@ -56,7 +57,7 @@ def test_mc_deterministic_limit(config_mc):
     )
 
     # ⟨n²⟩ should be numerically zero.
-    var = sol_mc.y[n_half:, :]
+    var = sol_mc.y[n_block:, :]
     assert np.all(var >= -1e-14), (
         "Variance ⟨n²⟩ has negative values below numerical tolerance"
     )
@@ -76,15 +77,14 @@ def test_mc_variance_nonnegative(config_mc):
     feedback).  This test ensures that the integrator never drives the
     variance below zero.
     """
-    cfg = dict(config_mc)
-    cfg["physics"] = dict(cfg["physics"])
+    cfg = copy.deepcopy(config_mc)
     cfg["physics"]["T1"] = 1.0e-3
 
     model_mc = MomentClosureNDE3D(cfg)
     sol_mc = run_pde_solver(model_mc, cfg)
 
-    n_half = model_mc.n_state_half
-    var = sol_mc.y[n_half:, :]
+    n_block = model_mc.n_state_block
+    var = sol_mc.y[n_block:, :]
 
     # Allow a small negative tolerance consistent with the solver's
     # absolute tolerance (atol=1e-6).  The RK45 internal stages can
@@ -185,8 +185,7 @@ def test_mc3_deterministic_limit(config_mc3):
     and both remain zero (to numerical precision).  The mean equation
     then reduces to the deterministic NDE.
     """
-    cfg = dict(config_mc3)
-    cfg["physics"] = dict(cfg["physics"])
+    cfg = copy.deepcopy(config_mc3)
     cfg["physics"]["T1"] = 0.0
 
     model_mc3 = ThirdOrderMomentClosureNDE3D(cfg)
@@ -195,21 +194,21 @@ def test_mc3_deterministic_limit(config_mc3):
     model_det = SpectralNDE3D(cfg)
     sol_det = run_pde_solver(model_det, cfg)
 
-    nh = model_mc3.n_state_half
+    nb = model_mc3.n_state_block
 
-    N_mc3 = sol_mc3.y[:nh, :]
+    N_mc3 = sol_mc3.y[:nb, :]
     N_det = sol_det.y[:, :]
     rel_err = np.max(np.abs(N_mc3 - N_det)) / np.max(np.abs(N_det))
     assert rel_err < 1e-6, (
         f"Mean ⟨N⟩ deviates from deterministic: rel_err={rel_err:.2e}"
     )
 
-    var = sol_mc3.y[nh:2*nh, :]
+    var = sol_mc3.y[nb:2*nb, :]
     assert np.max(var) < 1e-12, (
         f"Variance should be zero when T1=0, max={np.max(var):.2e}"
     )
 
-    third = sol_mc3.y[2*nh:, :]
+    third = sol_mc3.y[2*nb:, :]
     assert np.max(np.abs(third)) < 1e-12, (
         f"Third moment should be zero when T1=0, "
         f"max_abs={np.max(np.abs(third)):.2e}"
@@ -224,15 +223,14 @@ def test_mc3_variance_nonnegative(config_mc3):
     This is the same check as test_mc_variance_nonnegative but for
     the third-order closure.
     """
-    cfg = dict(config_mc3)
-    cfg["physics"] = dict(cfg["physics"])
+    cfg = copy.deepcopy(config_mc3)
     cfg["physics"]["T1"] = 1.0e-3
 
     model_mc3 = ThirdOrderMomentClosureNDE3D(cfg)
     sol_mc3 = run_pde_solver(model_mc3, cfg)
 
-    nh = model_mc3.n_state_half
-    var = sol_mc3.y[nh:2*nh, :]
+    nb = model_mc3.n_state_block
+    var = sol_mc3.y[nb:2*nb, :]
     min_var = float(np.min(var))
     assert min_var > -1e-6, (
         f"Variance ⟨n²⟩ dropped below zero: min={min_var:.4e}"
@@ -355,8 +353,7 @@ def test_mc3_third_moment_source():
 
 def test_compute_noise_amplitude_zero_when_T1_zero(config_mc):
     """Noise amplitude must be zero everywhere when T1=0."""
-    cfg = dict(config_mc)
-    cfg["physics"] = dict(cfg["physics"])
+    cfg = copy.deepcopy(config_mc)
     cfg["physics"]["T1"] = 0.0
 
     model = SpectralNDE3D(cfg)
@@ -428,10 +425,10 @@ def test_stochastic_solver_deterministic_limit():
     model_det = SpectralNDE3D(cfg)
     sol_det = run_pde_solver(model_det, cfg)
 
-    rel_err = np.max(np.abs(sol_stoch.y - sol_det.y))
-    assert rel_err < 0.01, (
+    abs_err = np.max(np.abs(sol_stoch.y - sol_det.y))
+    assert abs_err < 0.01, (
         f"Stochastic solver (T1=0) deviates too much from deterministic: "
-        f"{rel_err:.4e} (>1%)"
+        f"{abs_err:.4e} (>1%)"
     )
 
 
@@ -461,26 +458,26 @@ def test_mc3_gaussian_closure_consistency():
     model_gauss = MomentClosureNDE3D(cfg)
     model_third = ThirdOrderMomentClosureNDE3D(cfg)
 
-    nh = model_gauss.n_state_half
-    n0 = model_gauss.get_initial_condition()[:nh]
+    nb = model_gauss.n_state_block
+    n0 = model_gauss.get_initial_condition()[:nb]
 
     # Build a state with non-uniform mean, uniform variance, and zero
     # third moment so the test is non-trivial.
-    y_gauss = np.empty(2 * nh)
-    y_gauss[:nh] = n0
-    y_gauss[nh:] = 0.3
+    y_gauss = np.empty(2 * nb)
+    y_gauss[:nb] = n0
+    y_gauss[nb:] = 0.3
 
-    y_third = np.empty(3 * nh)
-    y_third[:nh] = n0
-    y_third[nh:2*nh] = 0.3
-    y_third[2*nh:] = 0.0
+    y_third = np.empty(3 * nb)
+    y_third[:nb] = n0
+    y_third[nb:2*nb] = 0.3
+    y_third[2*nb:] = 0.0
 
     rhs_gauss = model_gauss.compute_rhs(0.0, y_gauss)
     rhs_third = model_third.compute_rhs(0.0, y_third)
 
-    assert np.allclose(rhs_third[:nh], rhs_gauss[:nh]), (
+    assert np.allclose(rhs_third[:nb], rhs_gauss[:nb]), (
         "d⟨N⟩/dt mismatch between Gaussian and third-order closure"
     )
-    assert np.allclose(rhs_third[nh:2*nh], rhs_gauss[nh:]), (
+    assert np.allclose(rhs_third[nb:2*nb], rhs_gauss[nb:]), (
         "d⟨n²⟩/dt mismatch between Gaussian and third-order closure"
     )

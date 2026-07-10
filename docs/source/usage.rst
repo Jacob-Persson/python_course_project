@@ -21,9 +21,12 @@ The simulation is controlled via the ``config.yaml`` file. This allows you to mo
 
     physics:
       D: 0.2                  # Diffusion coefficient (cm^2/s)
-      rho: -1.0e-4            # Reactivity (1/s); negative = subcritical
+      rho: -1.0e-4            # Reactivity (1/s); scalar or spatial profile (see below)
       sigma: -0.05            # Quadratic feedback (0 = linear NDE)
       T1: 1.0e-5              # Noise amplitude (cm^3/s); 0 = deterministic
+      beta: 0.0               # Delayed neutron fraction (0 = no precursors)
+      lambda_D: 0.0           # Precursor decay constant (1/s)
+      T2: 0.0                 # Precursor noise amplitude (cm^3/s)
       L: [20.0, 20.0, 20.0]   # Box dimensions (cm)
       nodes: [24, 24, 24]     # Grid points per axis [nx, ny, nz]
 
@@ -90,6 +93,32 @@ The script will:
    :math:`\Delta N = \langle N \rangle - N_{\rm det}`.
 
 6. Optionally save figures and data, then display all plots.
+
+Spatial reactivity
+------------------
+
+By default ``rho`` is a constant scalar.  To specify a space-dependent
+reactivity :math:`\rho(\mathbf{x})`, pass a dictionary instead:
+
+.. code-block:: yaml
+
+    rho:
+      type: step           # uniform | step | gaussian | sinusoidal | radial
+      inside: 0.01         # reactivity inside the step region
+      outside: -0.01       # reactivity outside
+      width: 3.0           # step width (cm)
+      axis: x              # axis along which the step varies (x, y, or z)
+
+Each profile type uses its own set of keys:
+
+* **uniform**: ``value`` — constant value everywhere (equivalent to the scalar form).
+* **step**: ``inside``, ``outside``, ``width`` (cm), ``axis``.
+* **gaussian**: ``peak`` (value at centre), ``background`` (value at infinity), ``width`` (:math:`\sigma`, cm).
+* **sinusoidal**: ``mean``, ``amplitude``, ``freq`` (list of waves per axis, e.g. ``[1, 1, 1]``).
+* **radial**: ``inner``, ``outer``, ``radius`` (cm), ``sharpness`` (sigmoid steepness), ``center`` (offset, list of three floats).
+
+All three solution modes (deterministic NDE, Gaussian closure, third-order
+closure) accept spatial reactivity without modification.
 
 Extending the Model
 -------------------

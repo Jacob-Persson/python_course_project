@@ -10,7 +10,7 @@ optional quadratic feedback and multiplicative noise:
 
 Where:
 * :math:`D` is the diffusion coefficient.
-* :math:`\rho` is the reactivity (linear growth/decay).
+* :math:`\rho` is the reactivity (linear growth/decay).  May be a scalar or a 3-D field :math:`\rho(\mathbf{x})` — see :doc:`usage`.
 * :math:`\sigma` is the quadratic feedback coefficient (set ``sigma: 0`` for the linear model).
 
 Noise (stochastic forcing)
@@ -44,6 +44,33 @@ A direct mapping to nuclear-engineering constants (e.g. the delayed-neutron
 fraction :math:`\beta_{\rm eff}` or the prompt-neutron generation time
 :math:`\Lambda`) would require an additional coarse-graining step that is
 beyond the scope of the present Directed-Percolation study.
+
+Delayed neutron precursors
+--------------------------
+
+When the delayed-neutron fraction :math:`\beta` is non-zero the model is
+extended to a two-variable system:
+
+.. math::
+
+   \partial_t N &= D\nabla^2 N + (\rho - \beta) N + \sigma N^2
+                  + \lambda_D M + \eta_1, \\[4pt]
+   \partial_t M &= \beta N - \lambda_D M + \eta_2,
+
+where :math:`M` is the precursor density, :math:`\beta` is the delayed
+fraction (dimensionless), and :math:`\lambda_D` the precursor decay
+constant.  Two independent noises drive the system:
+
+.. math::
+
+   \langle\eta_i(\mathbf{x},t)\,\eta_i(\mathbf{x}',t')\rangle
+   = 2 T_i\, N_i(\mathbf{x},t)\,\delta(\mathbf{x}-\mathbf{x}')\,
+     \delta(t-t'), \qquad \langle\eta_1\eta_2\rangle = 0.
+
+The state vector is :math:`[N_{\text{flat}};\, M_{\text{flat}}]`,
+twice the length of the single-variable model.  The standard model is
+recovered for :math:`\beta = \lambda_D = 0`.  Moment-closure variants
+for the extended system are not yet implemented.
 
 MSR field theory
 ----------------

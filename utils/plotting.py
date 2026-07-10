@@ -4,11 +4,14 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 from itertools import cycle
 
+def _get_nc(model):
+    return int(np.prod(model.nodes.astype(int)))
+
 def plot_spatial_slice_2d(model, solution, solution_linear=None):
     """Plots a 2D XY-slice at the Z-center."""
-    # Ensure we use integers for reshaping and indexing
     nodes = tuple(model.nodes.astype(int))
-    N_final_3d = solution.y[:, -1].reshape(nodes)
+    nc = _get_nc(model)
+    N_final_3d = solution.y[:nc, -1].reshape(nodes)
     
     # Use a single integer for the Z-index to get a 2D result
     z_mid = nodes[2] // 2
@@ -32,7 +35,8 @@ def plot_spatial_slice_2d(model, solution, solution_linear=None):
 def plot_population_history(model, solution, solution_linear=None):
     """Plots the total volume integral over time in a separate window."""
     dv = model.dv
-    total_pop = [np.sum(solution.y[:, i]) * dv for i in range(len(solution.t))]
+    nc = _get_nc(model)
+    total_pop = [np.sum(solution.y[:nc, i]) * dv for i in range(len(solution.t))]
     
     plt.figure("Total Population History")
     plt.clf()
@@ -40,7 +44,7 @@ def plot_population_history(model, solution, solution_linear=None):
              label=f'σ = {model.sigma:.3f}')
     
     if solution_linear is not None:
-        total_pop_lin = [np.sum(solution_linear.y[:, i]) * dv
+        total_pop_lin = [np.sum(solution_linear.y[:nc, i]) * dv
                          for i in range(len(solution_linear.t))]
         plt.plot(solution_linear.t, total_pop_lin, '--', color='grey',
                  label='σ = 0 (linear)')
@@ -69,7 +73,7 @@ def plot_mean_shift(model, solution_mc, solution_nonlinear_det):
     """
     nc = int(np.prod(model.nodes.astype(int)))
     N_mc = solution_mc.y[:nc, -1].reshape(model.nodes)
-    N_det = solution_nonlinear_det.y[:, -1].reshape(model.nodes)
+    N_det = solution_nonlinear_det.y[:nc, -1].reshape(model.nodes)
 
     is_3rd = (solution_mc.y.shape[0] == 3 * nc)
     label = ('⟨N⟩ (3rd-order closure)' if is_3rd
@@ -96,7 +100,8 @@ def plot_spatial_slice_1d(model, solution, solution_linear=None,
     """
     Plots Neutron Density vs Position (X) at the center of Y and Z.
     """
-    N_final = solution.y[:, -1].reshape(model.nodes)
+    nc = _get_nc(model)
+    N_final = solution.y[:nc, -1].reshape(model.nodes)
     mid_y, mid_z = model.nodes[1] // 2, model.nodes[2] // 2
     n_1d = N_final[:, mid_y, mid_z]
     x_axis = np.linspace(0, model.L[0], model.nodes[0])
@@ -110,9 +115,9 @@ def plot_spatial_slice_1d(model, solution, solution_linear=None,
 
     # --- Moment-closure ensemble average ⟨N⟩ ---
     if model.T1 > 0 and solution_mc is not None:
-        nc = int(np.prod(model.nodes.astype(int)))
-        is_3rd = (solution_mc.y.shape[0] == 3 * nc)
-        N_mc = solution_mc.y[:nc, -1].reshape(model.nodes)
+        n_half = int(np.prod(model.nodes.astype(int)))
+        is_3rd = (solution_mc.y.shape[0] == 3 * n_half)
+        N_mc = solution_mc.y[:n_half, -1].reshape(model.nodes)
         n_1d_mc = N_mc[:, mid_y, mid_z]
         mc_label = ('⟨N⟩ (3rd-order closure)' if is_3rd
                     else '⟨N⟩ (moment closure)')
@@ -120,14 +125,14 @@ def plot_spatial_slice_1d(model, solution, solution_linear=None,
 
     # --- Deterministic nonlinear (same σ, T₁ = 0) ---
     if model.T1 > 0 and solution_nonlinear_det is not None:
-        N_final_det = solution_nonlinear_det.y[:, -1].reshape(model.nodes)
+        N_final_det = solution_nonlinear_det.y[:nc, -1].reshape(model.nodes)
         n_1d_det = N_final_det[:, mid_y, mid_z]
         plt.plot(x_axis, n_1d_det, '--', color='black', lw=1.5,
                  label=f'σ = {model.sigma:.3f}, T₁ = 0')
 
     # --- Linear reference (σ = 0, T₁ = 0) ---
     if solution_linear is not None:
-        N_final_lin = solution_linear.y[:, -1].reshape(model.nodes)
+        N_final_lin = solution_linear.y[:nc, -1].reshape(model.nodes)
         n_1d_lin = N_final_lin[:, mid_y, mid_z]
         plt.plot(x_axis, n_1d_lin, '--', color='grey', lw=1.5,
                  label='σ = 0, T₁ = 0 (linear)')
@@ -152,10 +157,11 @@ def plot_time_space_evolution(model, solution, solution_linear=None):
     plt.clf()
 
     mid_y, mid_z = model.nodes[1] // 2, model.nodes[2] // 2
+    nc = _get_nc(model)
     
     time_space_data = []
     for i in range(len(solution.t)):
-        N_t = solution.y[:, i].reshape(model.nodes)
+        N_t = solution.y[:nc, i].reshape(model.nodes)
         time_space_data.append(N_t[:, mid_y, mid_z])
     
     data_matrix = np.array(time_space_data).T
@@ -221,10 +227,11 @@ def plot_radial_evolution(model, solution, solution_linear=None):
     r_bins = np.linspace(0, r_max, nodes[0])
     r_centers = (r_bins[:-1] + r_bins[1:]) / 2
 
+    nc = _get_nc(model)
     radial_time_data = []
 
     for i in range(len(solution.t)):
-        N_3d = solution.y[:, i].reshape(nodes)
+        N_3d = solution.y[:nc, i].reshape(nodes)
         # Bin-sum over the grid points belonging to each radial shell.
         hist, _ = np.histogram(r, bins=r_bins, weights=N_3d)
         # Approximate volume integral by including the cell volume element.
@@ -263,10 +270,48 @@ def plot_radial_evolution(model, solution, solution_linear=None):
     plt.ylabel("Distance from Center R (cm)")
 
 
-def arrange_figure_windows():
+def plot_rho_field(model):
+    r"""
+    Plot the reactivity field :math:`\rho(\mathbf{x})` along the centre line
+    (Y, Z mid-plane) if it is not spatially uniform.
+
+    When the field is uniform the plot is skipped (no window created).
+    """
+    rho = model.rho_field
+    if np.ptp(rho) < 1e-16:
+        return
+
+    mid_y, mid_z = model.nodes[1] // 2, model.nodes[2] // 2
+    rho_1d = rho[:, mid_y, mid_z]
+    x_axis = np.linspace(0, model.L[0], model.nodes[0])
+
+    plt.figure("Reactivity Profile")
+    plt.clf()
+    plt.plot(x_axis, rho_1d, 'g-', lw=2)
+
+    plt.title(r"Reactivity $\rho(x)$ along X-axis (Y, Z centre)")
+    plt.xlabel("Position X (cm)")
+    plt.ylabel(r"Reactivity $\rho$ (s$^{-1}$)")
+    plt.grid(True, alpha=0.3)
+    # Show min/max values in the corner.
+    plt.text(0.98, 0.05,
+             f"min = {rho.min():.4e}\nmax = {rho.max():.4e}",
+             transform=plt.gca().transAxes,
+             ha='right', va='bottom',
+             bbox=dict(boxstyle='round', fc='wheat', alpha=0.5))
+
+
+def arrange_figure_windows(stack_on_target=None):
     """
     Place all open matplotlib figure windows in a non-overlapping grid
     across the screen, so that every plot is visible at once.
+
+    Parameters
+    ----------
+    stack_on_target : dict, optional
+        Mapping ``{source_label: target_label}``.  Source figures are
+        excluded from the grid and placed at the same screen position
+        as the target figure instead (they overlap).
     """
     fig_nums = plt.get_fignums()
     if not fig_nums:
@@ -283,25 +328,59 @@ def arrange_figure_windows():
     except Exception:
         sw, sh = 1920, 1080
 
-    n = len(fig_nums)
+    # Determine which figures go in the grid and which are stacked.
+    stack_sources = set(stack_on_target or {})
+    grid_figs = [(fn, plt.figure(fn))
+                 for fn in fig_nums
+                 if plt.figure(fn).get_label() not in stack_sources]
+
+    n = len(grid_figs)
+    if n == 0:
+        return
     n_cols = min(n, 3)
     n_rows = (n + n_cols - 1) // n_cols
     win_w = sw // n_cols
     win_h = sh // n_rows
 
-    for i, fig_num in enumerate(fig_nums):
-        fig = plt.figure(fig_num)
+    # Build a {label: (x, y)} lookup for all grid figures.
+    pos_by_label = {}
+    for i, (fn, fig) in enumerate(grid_figs):
         col = i % n_cols
         row = i // n_cols
         x = col * win_w
-        y = sh - (row + 1) * win_h   # top-left origin → bottom-left for Tk
+        y = sh - (row + 1) * win_h
+        pos_by_label[fig.get_label()] = (x, y)
 
         try:
-            # TkAgg backend
             fig.canvas.manager.window.wm_geometry(f"+{x}+{y}")
         except AttributeError:
             try:
-                # QtAgg backend
                 fig.canvas.manager.window.move(x, y)
             except AttributeError:
-                pass                     # unsupported backend, skip
+                pass
+
+    # Stack sources on top of their targets.
+    if not stack_on_target:
+        return
+    for fn in fig_nums:
+        label = plt.figure(fn).get_label()
+        if label not in stack_sources:
+            continue
+        target_label = stack_on_target[label]
+        if target_label in pos_by_label:
+            tx, ty = pos_by_label[target_label]
+        else:
+            # Target not found — place at the next free grid slot.
+            n_grid = len(pos_by_label)
+            col = n_grid % n_cols
+            row = n_grid // n_cols
+            tx = col * win_w
+            ty = sh - (row + 1) * win_h
+        fig = plt.figure(fn)
+        try:
+            fig.canvas.manager.window.wm_geometry(f"+{tx}+{ty}")
+        except AttributeError:
+            try:
+                fig.canvas.manager.window.move(tx, ty)
+            except AttributeError:
+                pass

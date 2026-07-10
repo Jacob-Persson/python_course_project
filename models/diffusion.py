@@ -57,7 +57,7 @@ class SpectralNDE3D(BaseModel):
             config: Dictionary containing 'physics' and 'initial_condition' keys.
         """
         p = config['physics']
-        self.D, self.rho = p['D'], p['rho']
+        self.D = p['D']
         self.sigma = float(p.get('sigma', 0.0))
         self.T1 = float(p.get('T1', 0.0))
         # Domain size and grid resolution.
@@ -89,6 +89,112 @@ class SpectralNDE3D(BaseModel):
         z = np.linspace(0, self.L[2], self.nodes[2], endpoint=False)
         self.X, self.Y, self.Z = np.meshgrid(x, y, z, indexing='ij')
         self.ic_config = config['initial_condition']
+
+        # Parse reactivity — scalar or spatial profile.
+        rho_config = p['rho']
+        if isinstance(rho_config, dict):
+            self.rho_field = self._build_rho_field(rho_config)
+            self.rho = float(self.rho_field.flat[0])
+        else:
+            self.rho = float(rho_config)
+            self.rho_field = self.rho * np.ones(self.nodes, dtype=float)
+
+    def _build_rho_field(self, cfg: dict) -> np.ndarray:
+        r"""Build a 3-D reactivity field from a profile configuration.
+
+        Accepted ``cfg['type']`` values:
+
+        * ``uniform`` — constant ``value`` everywhere.
+        * ``step`` — ``inside`` / ``outside`` values separated by a planar
+          interface of total ``width`` (cm).
+        * ``gaussian`` — ``peak`` at center, ``background`` at infinity,
+          ``width`` :math:`\sigma` in cm.
+        * ``sinusoidal`` — ``mean`` value modulated by ``amplitude`` with
+          ``freq`` waves across the domain in each dimension.
+        * ``radial`` — ``inner`` / ``outer`` values joined by a sigmoid
+          at ``radius`` (cm).
+        """
+        rho_type = cfg.get('type', 'uniform')
+        builders = {
+            'uniform': self._build_rho_uniform,
+            'step': self._build_rho_step,
+            'gaussian': self._build_rho_gaussian,
+            'sinusoidal': self._build_rho_sinusoidal,
+            'radial': self._build_rho_radial,
+        }
+        builder = builders.get(rho_type)
+        if builder is None:
+            raise ValueError(
+                f"Unknown rho profile type '{rho_type}'. "
+                f"Supported: {list(builders)}"
+            )
+        return builder(cfg)
+
+    def _build_rho_uniform(self, cfg: dict) -> np.ndarray:
+        value = float(cfg.get('value', 0.0))
+        return np.full(self.nodes, value, dtype=float)
+
+    def _build_rho_step(self, cfg: dict) -> np.ndarray:
+        inside = float(cfg.get('inside', 0.0))
+        outside = float(cfg.get('outside', 0.0))
+        width = float(cfg.get('width', 0.5))
+        axis = cfg.get('axis', 'x')
+        axes = {'x': 0, 'y': 1, 'z': 2}
+        ax = axes.get(axis, 0)
+        L_ax = self.L[ax]
+        n_ax = self.nodes[ax]
+        dx = self.dx_vec[ax]
+        half_width = 0.5 * width
+        center = 0.5 * L_ax
+        rho = np.full(self.nodes, outside, dtype=float)
+        lo = int(np.clip((center - half_width) / dx, 0, n_ax - 1))
+        hi = int(np.clip((center + half_width) / dx + 1, 0, n_ax))
+        if ax == 0:
+            rho[lo:hi, :, :] = inside
+        elif ax == 1:
+            rho[:, lo:hi, :] = inside
+        else:
+            rho[:, :, lo:hi] = inside
+        return rho
+
+    def _build_rho_gaussian(self, cfg: dict) -> np.ndarray:
+        peak = float(cfg.get('peak', 0.0))
+        bg = float(cfg.get('background', 0.0))
+        sigma = float(cfg.get('width', 0.2))
+        cx, cy, cz = 0.5 * self.L
+        r_sq = (self.X - cx)**2 + (self.Y - cy)**2 + (self.Z - cz)**2
+        envelope = np.exp(-r_sq / (2 * sigma**2))
+        return bg + (peak - bg) * envelope
+
+    def _build_rho_sinusoidal(self, cfg: dict) -> np.ndarray:
+        mean = float(cfg.get('mean', 0.0))
+        amp = float(cfg.get('amplitude', 0.0))
+        freq = cfg.get('freq', [1, 1, 1])
+        if np.isscalar(freq):
+            freq = [float(freq)] * 3
+        fx, fy, fz = float(freq[0]), float(freq[1]), float(freq[2])
+        Lx, Ly, Lz = self.L
+        phase = (2 * np.pi * fx * self.X / Lx
+                 + 2 * np.pi * fy * self.Y / Ly
+                 + 2 * np.pi * fz * self.Z / Lz)
+        return mean + amp * np.cos(phase)
+
+    def _build_rho_radial(self, cfg: dict) -> np.ndarray:
+        inner = float(cfg.get('inner', 0.0))
+        outer = float(cfg.get('outer', 0.0))
+        r0 = float(cfg.get('radius', 3.0))
+        sharpness = float(cfg.get('sharpness', 10.0))
+        center_offset = cfg.get('center', [0.0, 0.0, 0.0])
+        if np.isscalar(center_offset):
+            center_offset = [float(center_offset)] * 3
+        cx = 0.5 * self.L[0] + float(center_offset[0])
+        cy = 0.5 * self.L[1] + float(center_offset[1])
+        cz = 0.5 * self.L[2] + float(center_offset[2])
+        r = np.sqrt((self.X - cx)**2 + (self.Y - cy)**2 + (self.Z - cz)**2)
+            # Guard against division by zero and clamp the tanh
+            # argument to avoid overflow with very small r0.
+        r0 = max(r0, 1e-16)
+        return outer + (inner - outer) * 0.5 * (1 - np.tanh(sharpness * (r - r0) / r0))
 
     def get_initial_condition(self):
         r"""
@@ -198,7 +304,7 @@ class SpectralNDE3D(BaseModel):
         toc('rhs.fft')
 
         tic('rhs.local')
-        dN_dt = self.D * laplacian + self.rho * N + self.sigma * N**2
+        dN_dt = self.D * laplacian + self.rho_field * N + self.sigma * N**2
         toc('rhs.local')
         return dN_dt.flatten()
 
@@ -296,15 +402,15 @@ class MomentClosureNDE3D(SpectralNDE3D):
     deterministic nonlinear NDE.
 
     Attributes:
-        n_state_half: Number of degrees of freedom for a single field
-            (``= prod(nodes)``); the full state length is ``2 * n_state_half``.
+        n_state_block: Number of degrees of freedom for a single field
+            (``= prod(nodes)``); the full state length is ``2 * n_state_block``.
         k0_sq: Squared characteristic wavenumber used in the dissipative
             closure, :math:`k_0^2 = (\pi / \Delta x_{\rm avg})^2`.
     """
 
     def __init__(self, config):
         super().__init__(config)
-        self.n_state_half = int(np.prod(self.nodes))
+        self.n_state_block = int(np.prod(self.nodes))
         # Characteristic wavenumber for the dissipative term.
         dx_avg = float(np.mean(self.dx_vec))
         self.k0_sq = (np.pi / dx_avg) ** 2
@@ -330,9 +436,8 @@ class MomentClosureNDE3D(SpectralNDE3D):
         second half is :math:`\langle n^2 \rangle`.
 
         The raw (unclipped) variance is used to detect any solver-induced
-        negative values; a restoring term
-        :math:`-\min(\langle n^2 \rangle_{\rm raw}, 0) \times 10^4` rapidly
-        pushes them back to zero.
+        negative values; a restoring term (linear for small negativity,
+        capped at 10) rapidly pushes them back to zero.
 
         Args:
             t: Current simulation time (s).
@@ -341,8 +446,8 @@ class MomentClosureNDE3D(SpectralNDE3D):
         Returns:
             Flattened RHS vector of the same length.
         """
-        n = y_flat[:self.n_state_half].reshape(self.nodes)
-        var_raw = y_flat[self.n_state_half:].reshape(self.nodes)
+        n = y_flat[:self.n_state_block].reshape(self.nodes)
+        var_raw = y_flat[self.n_state_block:].reshape(self.nodes)
         var = np.maximum(var_raw, 0.0)
 
         tic('rhs_mc.fft')
@@ -354,22 +459,23 @@ class MomentClosureNDE3D(SpectralNDE3D):
 
         tic('rhs_mc.local')
         dn_dt = (self.D * lap_n
-                 + self.rho * n
+                 + self.rho_field * n
                  + self.sigma * n ** 2
                  + self.sigma * var)
 
         dvar_dt = (self.D * lap_var
-                   + 2.0 * self.rho * var
+                   + 2.0 * self.rho_field * var
                    + 4.0 * self.sigma * n * var
                    - 2.0 * self.D * self.k0_sq * var
                    + 2.0 * self.T1 * n / self.dv)
 
         # Restoring force for unphysical negative variance.
         # The ODE solver can overshoot below zero at cells where both N and
-        # ⟨n²⟩ are near zero.  This correction brings them back with a
-        # sub-millisecond time constant, much faster than any physical scale.
+        # ⟨n²⟩ are near zero.  Linear correction for small negativity;
+        # capped at 10 to avoid stiff terms when overshoot is large.
         negativity = np.minimum(var_raw, 0.0)
-        dvar_dt += -negativity * 1e4
+        correction = np.clip(-negativity * 1e4, 0.0, 10.0)
+        dvar_dt += correction
         toc('rhs_mc.local')
 
         return np.concatenate([dn_dt.flatten(), dvar_dt.flatten()])
@@ -443,9 +549,9 @@ class ThirdOrderMomentClosureNDE3D(SpectralNDE3D):
     exactly to the Gaussian closure (:class:`MomentClosureNDE3D`).
 
     Attributes:
-        n_state_half: Number of degrees of freedom for a single field
+        n_state_block: Number of degrees of freedom for a single field
             (``= prod(nodes)``); the full state length is
-            ``3 * n_state_half``.
+            ``3 * n_state_block``.
         k0_sq: Squared characteristic wavenumber for the variance
             dissipation, :math:`k_0^2 = (\pi / \Delta x_{\rm avg})^2`.
         k1_sq: Squared characteristic wavenumber for the third-moment
@@ -454,7 +560,7 @@ class ThirdOrderMomentClosureNDE3D(SpectralNDE3D):
 
     def __init__(self, config):
         super().__init__(config)
-        self.n_state_half = int(np.prod(self.nodes))
+        self.n_state_block = int(np.prod(self.nodes))
         dx_avg = float(np.mean(self.dx_vec))
         self.k0_sq = (np.pi / dx_avg) ** 2
         self.k1_sq = (np.pi / dx_avg) ** 2
@@ -482,8 +588,7 @@ class ThirdOrderMomentClosureNDE3D(SpectralNDE3D):
         :math:`\langle N \rangle`, :math:`\langle n^2 \rangle`, and
         :math:`\langle n^3 \rangle`.
 
-        A restoring term
-        :math:`-\min(\langle n^2 \rangle_{\rm raw}, 0) \times 10^4`
+        A restoring term (linear for small negativity, capped at 10)
         is added to the variance RHS to correct solver-induced negative
         values.  The third cumulant is not restored — it may be positive
         or negative by physics.
@@ -496,10 +601,10 @@ class ThirdOrderMomentClosureNDE3D(SpectralNDE3D):
         Returns:
             Flattened RHS vector of the same length.
         """
-        nh = self.n_state_half
-        n = y_flat[:nh].reshape(self.nodes)
-        var_raw = y_flat[nh:2*nh].reshape(self.nodes)
-        third_raw = y_flat[2*nh:].reshape(self.nodes)
+        nb = self.n_state_block
+        n = y_flat[:nb].reshape(self.nodes)
+        var_raw = y_flat[nb:2*nb].reshape(self.nodes)
+        third_raw = y_flat[2*nb:].reshape(self.nodes)
 
         var = np.maximum(var_raw, 0.0)
 
@@ -514,19 +619,19 @@ class ThirdOrderMomentClosureNDE3D(SpectralNDE3D):
 
         tic('rhs_mc3.local')
         dn_dt = (self.D * lap_n
-                 + self.rho * n
+                 + self.rho_field * n
                  + self.sigma * n ** 2
                  + self.sigma * var)
 
         dvar_dt = (self.D * lap_var
-                   + 2.0 * self.rho * var
+                   + 2.0 * self.rho_field * var
                    + 4.0 * self.sigma * n * var
                    + 2.0 * self.sigma * third_raw
                    - 2.0 * self.D * self.k0_sq * var
                    + 2.0 * self.T1 * n / self.dv)
 
         dthird_dt = (self.D * lap_third
-                     + 3.0 * self.rho * third_raw
+                     + 3.0 * self.rho_field * third_raw
                      + 6.0 * self.sigma * n * third_raw
                      + 6.0 * self.sigma * var ** 2
                      - 6.0 * self.D * self.k1_sq * third_raw
@@ -534,9 +639,81 @@ class ThirdOrderMomentClosureNDE3D(SpectralNDE3D):
 
         # Restoring force for unphysical negative variance.
         negativity = np.minimum(var_raw, 0.0)
-        dvar_dt += -negativity * 1e4
+        correction = np.clip(-negativity * 1e4, 0.0, 10.0)
+        dvar_dt += correction
         toc('rhs_mc3.local')
 
         return np.concatenate([dn_dt.flatten(),
                                dvar_dt.flatten(),
                                dthird_dt.flatten()])
+
+
+class DelayedNeutronSpectralNDE3D(SpectralNDE3D):
+    r"""
+    3D neutron diffusion with delayed neutron precursors.
+
+    Coupled PDE system (Ito interpretation):
+
+    .. math::
+
+        \partial_t N &= D\nabla^2 N + (\rho - \beta)N + \sigma N^2
+                       + \lambda_D M + \eta_1, \\[4pt]
+        \partial_t M &= \beta N - \lambda_D M + \eta_2,
+
+    where :math:`N` is the neutron density, :math:`M` the precursor density,
+    :math:`\beta` the delayed fraction, :math:`\lambda_D` the precursor decay
+    constant, and :math:`\eta_1`, :math:`\eta_2` are independent Gaussian
+    noises with
+
+    .. math::
+
+        \langle\eta_i(\mathbf{x},t)\,\eta_i(\mathbf{x}',t')\rangle
+        = 2 T_i\, N_i(\mathbf{x},t)\,\delta(\mathbf{x}-\mathbf{x}')
+          \,\delta(t-t').
+
+    The state vector is :math:`[N_{\text{flat}};\, M_{\text{flat}}]`, i.e.
+    twice the length of the single-variable model.
+    """
+
+    def __init__(self, config):
+        super().__init__(config)
+        p = config['physics']
+        self.beta = float(p.get('beta', 0.0))
+        self.lambda_D = float(p.get('lambda_D', 0.0))
+        self.T2 = float(p.get('T2', 0.0))
+
+    @property
+    def is_delayed(self):
+        return True
+
+    def get_initial_condition(self):
+        N0 = super().get_initial_condition()
+        ic = self.ic_config
+        M0_amp = float(ic.get('M_amplitude', 0.0))
+        M0 = np.full_like(N0, M0_amp)
+        return np.concatenate([N0.flatten(), M0.flatten()])
+
+    def compute_rhs(self, t, y_flat):
+        nc = int(np.prod(self.nodes))
+        N = y_flat[:nc].reshape(self.nodes)
+        M = y_flat[nc:].reshape(self.nodes)
+
+        tic('rhs_delayed.fft')
+        N_hat = fftn(N)
+        laplacian = np.real(ifftn(-self.k_sq * N_hat))
+        toc('rhs_delayed.fft')
+
+        tic('rhs_delayed.local')
+        dN_dt = (self.D * laplacian
+                 + (self.rho_field - self.beta) * N
+                 + self.sigma * N**2
+                 + self.lambda_D * M)
+        dM_dt = self.beta * N - self.lambda_D * M
+        toc('rhs_delayed.local')
+
+        return np.concatenate([dN_dt.flatten(), dM_dt.flatten()])
+
+    def compute_precursor_noise_amplitude(self, M):
+        if self.T2 == 0.0:
+            return np.zeros_like(M)
+        return np.sqrt(2.0 * self.T2 * np.maximum(M, 0.0) / self.dv)

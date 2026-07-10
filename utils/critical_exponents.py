@@ -30,8 +30,9 @@ def compute_z(model):
     k = k[k > 0]
     Gamma = model.D * k**2
 
-    A = np.vstack([np.ones_like(k[:5]), np.log(k[:5])]).T
-    coeffs, *_ = np.linalg.lstsq(A, np.log(Gamma[:5]), rcond=None)
+    n_fit = min(len(k), 10)
+    A = np.vstack([np.ones(n_fit), np.log(k[:n_fit])]).T
+    coeffs, *_ = np.linalg.lstsq(A, np.log(Gamma[:n_fit]), rcond=None)
     return float(coeffs[1])
 
 

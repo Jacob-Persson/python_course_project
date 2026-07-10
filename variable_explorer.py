@@ -9,8 +9,8 @@ import pickle
 import sys
 from pathlib import Path
 
-save_dir = sys.argv[1] if len(sys.argv) > 1 else "results"
-path = Path(save_dir) / "sim_session.pkl"
+save_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("results")
+path = save_path / "sim_session.pkl"
 
 with open(path, "rb") as f:
     data = pickle.load(f)

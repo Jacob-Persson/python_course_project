@@ -88,10 +88,12 @@ def run_stochastic_pde_solver(model, config):
     dt_sub = min(dt_frame / 100, dt_cfl, 0.05)
 
     # Initial condition.
-    N = model.get_initial_condition().copy()
-    n_state = len(N)
+    state = model.get_initial_condition().copy()
+    n_state = len(state)
+    nc = int(np.prod(model.nodes))
+    is_delayed = getattr(model, 'is_delayed', False)
     y = np.zeros((n_state, n_frames))
-    y[:, 0] = N
+    y[:, 0] = state
 
     nodes = tuple(model.nodes.astype(int))
     rng = np.random.default_rng()
@@ -104,19 +106,33 @@ def run_stochastic_pde_solver(model, config):
             dt_step = min(dt_sub, t_target - t)
 
             tic('stoch.drift')
-            drift = model.compute_rhs(t, N).reshape(nodes)
+            drift = model.compute_rhs(t, state)
             toc('stoch.drift')
 
             tic('stoch.noise')
-            N_3d = N.reshape(nodes)
-            amp = model.compute_noise_amplitude(N_3d)
-            dW = rng.normal(0.0, 1.0, size=nodes).astype(np.float64)
-            N_new = N_3d + drift * dt_step + amp * dW * np.sqrt(dt_step)
-            N = N_new.flatten()
+            if is_delayed:
+                N_3d = state[:nc].reshape(nodes)
+                M_3d = state[nc:].reshape(nodes)
+                drift_N = drift[:nc].reshape(nodes)
+                drift_M = drift[nc:].reshape(nodes)
+                amp_N = model.compute_noise_amplitude(N_3d)
+                amp_M = model.compute_precursor_noise_amplitude(M_3d)
+                dW1 = rng.normal(0.0, 1.0, size=nodes).astype(np.float64)
+                dW2 = rng.normal(0.0, 1.0, size=nodes).astype(np.float64)
+                N_new = N_3d + drift_N * dt_step + amp_N * dW1 * np.sqrt(dt_step)
+                M_new = M_3d + drift_M * dt_step + amp_M * dW2 * np.sqrt(dt_step)
+                state = np.concatenate([N_new.flatten(), M_new.flatten()])
+            else:
+                state_3d = state.reshape(nodes)
+                drift_3d = drift.reshape(nodes)
+                amp = model.compute_noise_amplitude(state_3d)
+                dW = rng.normal(0.0, 1.0, size=nodes).astype(np.float64)
+                state = (state_3d + drift_3d * dt_step
+                         + amp * dW * np.sqrt(dt_step)).flatten()
             toc('stoch.noise')
 
             t += dt_step
 
-        y[:, i] = N.copy()
+        y[:, i] = state.copy()
 
     return OdeResult(t=t_eval, y=y)

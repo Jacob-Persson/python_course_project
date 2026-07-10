@@ -42,3 +42,8 @@ class BaseModel(ABC):
         model's ``nodes``.
         """
         pass
+
+    @property
+    def is_delayed(self):
+        """Whether the model includes delayed neutron precursors."""
+        return False

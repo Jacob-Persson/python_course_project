@@ -1,9 +1,10 @@
 Testing
 =======
 
-The repository includes a ``pytest`` suite (28 tests) covering the
+The repository includes a ``pytest`` suite (39 tests) covering the
 deterministic NDE, the moment-closure models (Gaussian and third-order),
 the Euler–Maruyama stochastic integrator, the critical-exponent extraction,
+the spatial-reactivity profiles, the delayed-neutron precursor model,
 and the diagnostic tools.
 
 Run the tests from the repository root:
@@ -67,6 +68,25 @@ What is tested
   propagator.
 * :math:`z = 2.0` from the spectral dispersion
   :math:`\Gamma(k) = D k^2`.
+
+**Delayed neutron precursors** (``test_models.py``):
+
+* State vector has twice the grid size.
+* With ``beta=0`` the RHS matches the standard model exactly.
+* Precursor build-up: ``dM/dt = beta * N`` when ``M=0``.
+* Precursor decay: ``dM/dt = -lambda_D * M`` when ``N=0``.
+* Noise amplitude ``sqrt(2 * T2 * M / dv)`` matches the expected form.
+* Short integration produces finite, non-negative N and finite M.
+
+**Spatial reactivity profiles** (``test_models.py``):
+
+* Uniform spatial profile produces the same RHS as scalar ``rho``.
+* Step profile assigns correct ``inside`` and ``outside`` values.
+* Gaussian profile is symmetric and peaks at the domain centre.
+* Sinusoidal profile reproduces the prescribed spatial mean.
+* Radial shell profile reaches the prescribed ``inner``/``outer`` values.
+* Eigenmode growth rate with uniform spatial ``rho`` matches the analytic
+  scalar-``rho`` result.
 
 **Diagnostics** (``test_diagnostics.py``):
 

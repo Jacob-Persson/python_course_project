@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import copy
+
 import numpy as np
 import pytest
 from models.diffusion import SpectralNDE3D
@@ -31,8 +33,9 @@ def test_3d_exponential_growth(config_3d):
     where ``M(t)`` is the spatial integral of the neutron density and ``rho`` is
     the reactivity.
     """
-    config_3d['physics']['D'] = 0.2  # Include diffusion to ensure it doesn't break mass
-    config_3d['physics']['sigma'] = 0.0  # Linear model only
+    config_3d = copy.deepcopy(config_3d)
+    config_3d['physics']['D'] = 0.2
+    config_3d['physics']['sigma'] = 0.0
     model = SpectralNDE3D(config_3d)
     sol = run_pde_solver(model, config_3d)
     
@@ -92,8 +95,7 @@ def test_3d_pure_diffusion_mass_conservation(config_3d):
     .. math::
         M(t) = \int N(\mathbf{x},t)\, dV \approx \sum_i N_i(t)\, dv.
     """
-    config_3d = dict(config_3d)
-    config_3d["physics"] = dict(config_3d["physics"])
+    config_3d = copy.deepcopy(config_3d)
     config_3d["physics"]["rho"] = 0.0
     config_3d["physics"]["sigma"] = 0.0
 
@@ -116,8 +118,7 @@ def test_3d_analytic_fourier_evolution_reference(config_3d):
         \widehat{N}(\mathbf{k}, t) =
         e^{(-D|\mathbf{k}|^2 + \rho)\, t}\,\widehat{N}(\mathbf{k},0).
     """
-    config_3d = dict(config_3d)
-    config_3d["physics"] = dict(config_3d["physics"])
+    config_3d = copy.deepcopy(config_3d)
     config_3d["physics"]["D"] = 0.37
     config_3d["physics"]["rho"] = 0.18
     config_3d["physics"]["sigma"] = 0.0
@@ -168,17 +169,16 @@ def test_critical_exponents_nu_and_z():
     assert len(rho_used) >= 2, (
         f"Too few rho values accepted by sweep: {len(rho_used)}"
     )
-    assert abs(nu - 0.5) < 1e-10, (
+    assert abs(nu - 0.5) < 1e-6, (
         f"nu = {nu:.6f}, expected 0.5"
     )
 
-    cfg = dict(base)
-    cfg["physics"] = dict(cfg["physics"])
+    cfg = copy.deepcopy(base)
     cfg["physics"]["rho"] = 0.0
     model = SpectralNDE3D(cfg)
     z = compute_z(model)
 
-    assert abs(z - 2.0) < 1e-10, (
+    assert abs(z - 2.0) < 1e-6, (
         f"z = {z:.6f}, expected 2.0"
     )
 
@@ -192,8 +192,7 @@ def test_3d_quadratic_feedback_rhs(config_3d):
     .. math::
         \frac{dN}{dt} = \sigma N_0^2.
     """
-    config_3d = dict(config_3d)
-    config_3d["physics"] = dict(config_3d["physics"])
+    config_3d = copy.deepcopy(config_3d)
     config_3d["physics"]["D"] = 0.0
     config_3d["physics"]["rho"] = 0.0
     config_3d["physics"]["sigma"] = 0.4

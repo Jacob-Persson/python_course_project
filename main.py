@@ -5,12 +5,14 @@ from pathlib import Path
 from copy import deepcopy
 from models.diffusion import (
     SpectralNDE3D, MomentClosureNDE3D, ThirdOrderMomentClosureNDE3D,
+    DelayedNeutronSpectralNDE3D,
 )
 from solvers.integrator import run_pde_solver, run_stochastic_pde_solver
 from utils.plotting import (
     plot_spatial_slice_1d, plot_spatial_slice_2d,
     plot_time_space_evolution, plot_radial_evolution,
-    plot_population_history, plot_mean_shift, arrange_figure_windows
+    plot_population_history, plot_mean_shift,
+    plot_rho_field, arrange_figure_windows,
 )
 from utils.diagnostics import save_simulation_state
 from utils.timer import tic, toc, report as timer_report, enable as timer_enable
@@ -33,7 +35,10 @@ def main():
 
     # 2) Build model and run the primary solver.
     T1 = config['physics'].get('T1', 0.0)
-    model = SpectralNDE3D(config)
+    beta = config['physics'].get('beta', 0.0)
+    has_delayed = beta > 0
+    ModelClass = DelayedNeutronSpectralNDE3D if has_delayed else SpectralNDE3D
+    model = ModelClass(config)
 
     tic('solver.primary')
     if T1 > 0.0:
@@ -47,7 +52,7 @@ def main():
     config_linear = deepcopy(config)
     config_linear['physics']['sigma'] = 0.0
     config_linear['physics']['T1'] = 0.0
-    model_linear = SpectralNDE3D(config_linear)
+    model_linear = ModelClass(config_linear)
     solution_linear = run_pde_solver(model_linear, config_linear)
     toc('solver.linear')
 
@@ -55,14 +60,14 @@ def main():
     tic('solver.nonlinear_det')
     config_nonlinear_det = deepcopy(config)
     config_nonlinear_det['physics']['T1'] = 0.0
-    model_nonlinear_det = SpectralNDE3D(config_nonlinear_det)
+    model_nonlinear_det = ModelClass(config_nonlinear_det)
     solution_nonlinear_det = run_pde_solver(model_nonlinear_det, config_nonlinear_det)
     toc('solver.nonlinear_det')
 
     # 2d) Moment-closure ensemble average.
     solution_mc = None
     mc_order = config.get('moment_closure', {}).get('order', 2)
-    if T1 > 0.0:
+    if T1 > 0.0 and not has_delayed:
         tic('solver.moment_closure')
         if mc_order == 3:
             model_mc = ThirdOrderMomentClosureNDE3D(config)
@@ -101,7 +106,16 @@ def main():
             dpi = out_cfg.get('dpi', 300)
             plt.savefig(save_dir / f"{name}.{ext}", dpi=dpi, bbox_inches='tight')
 
-    # 4b) Noise-induced mean shift.
+    # 4b) Reactivity field.
+    tic('plot.rho_field')
+    plot_rho_field(model)
+    toc('plot.rho_field')
+    if save_enabled and plt.fignum_exists("Reactivity Profile"):
+        ext = out_cfg.get('format', 'png')
+        dpi = out_cfg.get('dpi', 300)
+        plt.savefig(save_dir / f"rho_field.{ext}", dpi=dpi, bbox_inches='tight')
+
+    # 4c) Noise-induced mean shift.
     if T1 > 0.0 and solution_mc is not None and solution_nonlinear_det is not None:
         tic('plot.mean_shift')
         plot_mean_shift(model, solution_mc, solution_nonlinear_det)
@@ -123,7 +137,7 @@ def main():
     toc('critical_exponents')
 
     # 7) Arrange and show.
-    arrange_figure_windows()
+    arrange_figure_windows(stack_on_target={"Reactivity Profile": "Mean Shift"})
     toc('total')
     timer_report()
     plt.show()

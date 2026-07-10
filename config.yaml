@@ -1,33 +1,42 @@
 physics:
-  D: 0.2
-  rho: -1.0e-4
-  sigma: -0.05  # Quadratic feedback coefficient (1/(cm^3 s)); 0 = linear NDE
-  T1: 1.0e-5   # Noise amplitude (cm^3/s); 0 = deterministic SPDE
-  L: [20.0, 20.0, 20.0]  # Length in x, y, z
-  nodes: [24, 24, 24]    # Number of points in x, y, z
+  D: 0.2                     # Diffusion coefficient (cm^2/s)
+  rho: {type: radial, inner: 0.05, outer: -1.0, radius: 5, sharpness: 3}
+  # Examples:
+  #   Scalar:           rho: -1.0e-4
+  #   Spatial step:     rho: {type: step,      inside: 0.05, outside: -0.01, width: 5.0}
+  #   Gaussian bump:    rho: {type: gaussian,  peak: 0.01, background: -0.01, width: 2.0}
+  #   Sinusoidal wave:  rho: {type: sinusoidal, mean: 0.0, amplitude: 0.01, freq: [1, 1, 1]}
+  #   Radial shell:     rho: {type: radial,    inner: 0.01, outer: -0.01, radius: 3, sharpness: 10}
+  sigma: -0.05               # Quadratic feedback (1/(cm^3 s)); 0 = linear NDE
+  T1: 1.0e-5                 # Noise amplitude (cm^3/s); 0 = deterministic
+  beta: 1.0e-3               # Delayed neutron fraction (dimensionless)
+  lambda_D: 0.01             # Precursor decay constant (1/s)
+  T2: 1.0e-6                 # Precursor noise (cm^3/s)
+  L: [20.0, 20.0, 20.0]     # Domain size (cm)
+  nodes: [32, 32, 32]        # Grid points per dimension
 
 initial_condition:
-  type: "gaussian"  # Options: gaussian, uniform, point_source
+  type: "gaussian"
   amplitude: 1.0
-  width: 1.0
-  center_offset: 0.0  # 0.0 means center of the domain
+  width: 2.0                 # Gaussian sigma (cm); larger = better resolved
+  center_offset: 0.0
 
 moment_closure:
-  order: 3             # 2 = Gaussian closure, 3 = third-order
+  order: 2                   # 2 = Gaussian, 3 = third-order
 
 simulation:
-  t_end: 30.0
-  n_frames: 6
-  method: "RK45"
-  rtol: 5.0e-3
-  atol: 1.0e-6
+  t_end: 50.0                # Longer to see nonlinear saturation
+  n_frames: 50               # Smoother plots
+  method: "RK45"             # Switch to "Radau" if solver becomes slow
+  rtol: 1.0e-6
+  atol: 1.0e-8
 
 debug:
-  enable_timer: true         # Profile execution time (no effect if false)
+  enable_timer: true
 
 output:
-  save_plots: true          # Boolean flag to toggle saving
+  save_plots: true
   save_data: true
-  save_dir: "results"       # Folder name for saved figures
-  format: "png"             # Options: png, pdf, svg, jpg
-  dpi: 300                  # Resolution
+  save_dir: "results"
+  format: "png"
+  dpi: 300
